@@ -1,0 +1,32 @@
+random_seed: 42
+
+system:
+  n_sc: 9
+  ce: paircut9_5_5_ardr_n96
+
+windows:
+  energy_spacing: 0.1
+  list:
+    - [-25474.0, -25472.5, 2]
+    - [-25473.5, -25471.5, 2]
+    - [-25472.5, -25471.0, 1]
+
+wl:
+  flatness_limit: 0.8
+  fill_factor_limit: 1.0e-12
+  schedule: "1_over_t"
+  flatness_mode: "pooled"
+  merge_cadence: "at_halve"
+  n_trials_per_walker: 200000
+  block_size_sweeps: 10
+  trajectory_write_interval_sweeps: 100
+
+config_search:
+  n_workers: 2
+  max_swaps: [1, 2, 3]
+  attempts_per_swap_count: 50
+  random_attempts: 100
+
+checkpoint:
+  filename: rewl_state.h5
+  interval_cycles: 100
