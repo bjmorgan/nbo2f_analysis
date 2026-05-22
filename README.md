@@ -16,6 +16,16 @@ ARCHER2 or other deployment:
 The `icet` fork, `mchammer-pt`, `mchammer-moves`, and `chainorder`
 are fetched directly from their git remotes; `bsym` comes from PyPI.
 
+**If you have any of `icet`, `mchammer-pt`, `mchammer-moves`, or
+`chainorder` installed editably from a local checkout, install this
+package with `--no-deps` to avoid replacing those editable installs
+with fresh wheels:**
+
+    pip install -e nbo2f_analysis/ --no-deps
+
+Then verify the editable installs are intact with `pip list | grep
+-iE "icet|mchammer|chainorder"`.
+
 ## REWL driver
 
     rewl run         [--seed N] [--out-dir DIR] [--force] <config.yaml>
