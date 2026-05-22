@@ -130,3 +130,33 @@ def write_all(pt: Any, cfg: Any, *, history: Any | None = None) -> None:
     fig.savefig(out / "rewl_diagnostics.png", dpi=120)
     import matplotlib.pyplot as plt
     plt.close(fig)
+
+
+def postprocess(cfg) -> None:
+    """Re-derive CSVs and the figure from the checkpoint, no WL run."""
+    from pathlib import Path
+
+    from icet import ClusterExpansion
+    from mchammer_pt.contrib import CoordinatedCustomWangLandauEnsemble
+    from mchammer_pt.wl import WangLandauParallelTempering
+
+    from nbo2f_analysis.rewl.config import resolve_ce_path
+    from nbo2f_analysis.rewl.run import _build_moves_and_kwargs
+
+    cwd = Path.cwd()
+    checkpoint_path = cwd / cfg.checkpoint.filename
+    if not checkpoint_path.exists():
+        raise RuntimeError(
+            f"No checkpoint at {checkpoint_path}; nothing to postprocess."
+        )
+
+    ce = ClusterExpansion.read(str(resolve_ce_path(cfg)))
+    _, _, _, ensemble_kwargs = _build_moves_and_kwargs(cfg, ce)
+    pt = WangLandauParallelTempering.resume_process_pool(
+        str(checkpoint_path),
+        cluster_expansion=ce,
+        ensemble_cls=CoordinatedCustomWangLandauEnsemble,
+        ensemble_kwargs=ensemble_kwargs,
+    )
+    write_all(pt, cfg)
+    print("Done.")
