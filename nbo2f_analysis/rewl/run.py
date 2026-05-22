@@ -7,6 +7,7 @@ output paths used here are relative to CWD.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -33,10 +34,16 @@ from nbo2f_analysis.rewl.search import (
 
 def _build_ensemble_kwargs(cfg: RewlConfig, moves, n_atoms: int) -> dict:
     block_size = n_atoms * cfg.wl.block_size_sweeps
+    # icet's BaseEnsemble does `step % trajectory_write_interval` unguarded
+    # and asserts the value is an int (the `is np.inf` identity check icet
+    # uses to skip writes does not survive pickling across spawn workers,
+    # so we cannot pass np.inf either). Use sys.maxsize as the "disabled"
+    # sentinel: it is an int, modulo is cheap, and no realistic step count
+    # will reach it so no trajectory rows are written.
     traj_iv = (
         n_atoms * cfg.wl.trajectory_write_interval_sweeps
         if cfg.wl.trajectory_write_interval_sweeps > 0
-        else 0
+        else sys.maxsize
     )
     return {
         "moves": moves,
@@ -145,7 +152,7 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
 
 def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
     """Resume a previously-checkpointed REWL run."""
-    from mchammer_pt.history import ExchangeHistory
+    from mchammer_pt.history import ExchangeHistory, read_hdf5
 
     cwd = Path.cwd()
     checkpoint_path = cwd / cfg.checkpoint.filename
@@ -167,12 +174,11 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
         ensemble_kwargs=ensemble_kwargs,
     )
 
-    # Snapshot the pre-run history. `pt.run(...)` allocates a fresh
-    # per-segment ExchangeHistory and assigns it to `pt._history`,
-    # discarding the swap counts and per-cycle energies loaded from
-    # the checkpoint. Capturing here lets us concatenate afterwards so
-    # the written CSVs reflect cumulative cross-resume state.
-    prior_history = pt.history
+    # `resume_process_pool` rebuilds replicas and orchestrator state but
+    # does NOT repopulate `pt._history` from the checkpoint, so
+    # `pt.history` is None right after resume. Read it back directly
+    # from the HDF5 file so we can concatenate it with the next segment.
+    prior_history, _containers, _meta = read_hdf5(str(checkpoint_path))
     n_done = prior_history.energies_per_cycle.shape[0] - 1
     target_total_cycles = cfg.wl.n_trials_per_walker // block_size
     if extra_cycles is not None:

@@ -138,6 +138,7 @@ def postprocess(cfg) -> None:
 
     from icet import ClusterExpansion
     from mchammer_pt.contrib import CoordinatedCustomWangLandauEnsemble
+    from mchammer_pt.history import read_hdf5
     from mchammer_pt.wl import WangLandauParallelTempering
 
     from nbo2f_analysis.rewl.config import resolve_ce_path
@@ -158,5 +159,9 @@ def postprocess(cfg) -> None:
         ensemble_cls=CoordinatedCustomWangLandauEnsemble,
         ensemble_kwargs=ensemble_kwargs,
     )
-    write_all(pt, cfg)
+    # `resume_process_pool` does not repopulate `pt._history` from the
+    # checkpoint; read it back from the HDF5 directly so `write_all`
+    # has the cumulative exchange history to work with.
+    history, _, _ = read_hdf5(str(checkpoint_path))
+    write_all(pt, cfg, history=history)
     print("Done.")
