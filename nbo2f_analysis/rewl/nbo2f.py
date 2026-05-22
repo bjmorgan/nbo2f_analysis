@@ -1,13 +1,14 @@
-"""NbO2F-specific helpers for the REWL driver: move set and sublattice
-resolution.
+"""NbO2F-specific helpers for the REWL driver: move-set registry and
+sublattice resolution.
 
 These functions encapsulate the only material-specific composition in
-the driver: the fixed five-move set used in all production REWL runs,
-and the convention that the O/F anion sublattice is the one with
-chemical symbols ``{"O", "F"}``.
+the driver: the registry of move types that the YAML config can refer
+to by name, and the convention that the O/F anion sublattice is the
+one with chemical symbols ``{"O", "F"}``.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from mchammer_moves import IndexSetSwap, PairSwap
@@ -28,25 +29,41 @@ def resolve_anion_sublattice_index(calculator: Any) -> int:
     raise RuntimeError("No O/F sublattice found on calculator")
 
 
-def build_moves(n_sc: int, sublattice_index: int) -> list[tuple]:
-    """Return the standard NbO2F REWL move set as ``(move, weight)`` pairs.
+# Registry of move builders. Each entry is a string name (the value
+# users write in YAML) mapped to a callable that constructs the move
+# from ``(n_sc, sublattice_index)``. Adding a new move type means
+# adding an entry here; users cannot construct arbitrary move classes
+# from YAML alone.
+_MOVE_BUILDERS: dict[str, Callable[[int, int], Any]] = {
+    "pair_swap": lambda n_sc, sublattice_index: PairSwap(
+        sublattice_index=sublattice_index,
+    ),
+    "row_shift": lambda n_sc, sublattice_index: RowShift(n_sc),
+    "motif_shift": lambda n_sc, sublattice_index: MotifShift(n_sc),
+    "chain_swap": lambda n_sc, sublattice_index: IndexSetSwap(
+        index_sets=build_anion_chains(n_sc),
+        name="chain_swap",
+        require_matching_composition=False,
+    ),
+    "row_reflect": lambda n_sc, sublattice_index: RowReflect(n_sc),
+}
 
-    The set is fixed across the production runs: a pairwise anion swap,
-    a row shift, a motif shift, an anion-chain index-set swap, and a
-    row reflection. Weights mirror the existing scripts.
+ALLOWED_MOVE_TYPES: frozenset[str] = frozenset(_MOVE_BUILDERS)
+
+
+def build_moves(
+    n_sc: int,
+    sublattice_index: int,
+    moves_cfg: Any,
+) -> list[tuple]:
+    """Return the move set described by ``moves_cfg`` as ``(move, weight)`` pairs.
+
+    ``moves_cfg`` is a ``MovesCfg`` from the YAML config, whose ``.list``
+    is a tuple of ``MoveSpec(type, weight)`` entries. Each entry's
+    ``type`` is looked up in the registry to construct the actual move.
     """
-    chains = build_anion_chains(n_sc)
-    return [
-        (PairSwap(sublattice_index=sublattice_index), 0.1),
-        (RowShift(n_sc), 0.2),
-        (MotifShift(n_sc), 0.5),
-        (
-            IndexSetSwap(
-                index_sets=chains,
-                name="chain_swap",
-                require_matching_composition=False,
-            ),
-            0.5,
-        ),
-        (RowReflect(n_sc), 0.5),
-    ]
+    out: list[tuple] = []
+    for spec in moves_cfg.list:
+        builder = _MOVE_BUILDERS[spec.type]
+        out.append((builder(n_sc, sublattice_index), spec.weight))
+    return out

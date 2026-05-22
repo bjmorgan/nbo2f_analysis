@@ -53,6 +53,17 @@ class WlCfg:
 
 
 @dataclass(frozen=True)
+class MoveSpec:
+    type: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class MovesCfg:
+    list: tuple[MoveSpec, ...]
+
+
+@dataclass(frozen=True)
 class ConfigSearchCfg:
     n_workers: int | None
     max_swaps: tuple[int, ...]
@@ -72,6 +83,7 @@ class RewlConfig:
     system: SystemCfg
     windows: WindowsCfg
     wl: WlCfg
+    moves: MovesCfg
     config_search: ConfigSearchCfg
     checkpoint: CheckpointCfg
     source_path: Path = field(default=Path("."))
@@ -190,6 +202,51 @@ def load_yaml(path: str | Path) -> RewlConfig:
             f"got {wl.trajectory_write_interval_sweeps}"
         )
 
+    # Avoid a top-level circular import — the nbo2f module imports from
+    # chain_geometry/mchammer_moves which are heavy. Lazy import here
+    # keeps `load_yaml` cheap for tests that don't need icet loaded.
+    from nbo2f_analysis.rewl.nbo2f import ALLOWED_MOVE_TYPES
+
+    moves_raw = raw.get("moves")
+    if moves_raw is None:
+        raise ValueError("moves: section is required in the config")
+    if not isinstance(moves_raw, list) or not moves_raw:
+        raise ValueError(
+            f"moves: must be a non-empty list of {{type, weight}} entries, "
+            f"got {moves_raw!r}"
+        )
+    seen_types: set[str] = set()
+    move_specs: list[MoveSpec] = []
+    for i, entry in enumerate(moves_raw):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"moves[{i}] must be a {{type, weight}} dict, got {entry!r}"
+            )
+        extra = set(entry) - {"type", "weight"}
+        if extra or set(entry) != {"type", "weight"}:
+            raise ValueError(
+                f"moves[{i}] must have exactly the keys 'type' and 'weight', "
+                f"got {sorted(entry)}"
+            )
+        type_ = str(entry["type"])
+        if type_ not in ALLOWED_MOVE_TYPES:
+            raise ValueError(
+                f"moves[{i}].type={type_!r} not recognised. "
+                f"Allowed: {sorted(ALLOWED_MOVE_TYPES)}"
+            )
+        if type_ in seen_types:
+            raise ValueError(
+                f"moves[{i}].type={type_!r} appears more than once"
+            )
+        seen_types.add(type_)
+        weight = float(entry["weight"])
+        if not (weight > 0.0):
+            raise ValueError(
+                f"moves[{i}].weight must be > 0, got {weight}"
+            )
+        move_specs.append(MoveSpec(type=type_, weight=weight))
+    moves_cfg = MovesCfg(list=tuple(move_specs))
+
     cs_raw = raw["config_search"]
     raw_max_swaps = cs_raw["max_swaps"]
     if not isinstance(raw_max_swaps, list) or not all(
@@ -235,6 +292,7 @@ def load_yaml(path: str | Path) -> RewlConfig:
         system=system,
         windows=windows,
         wl=wl,
+        moves=moves_cfg,
         config_search=cs,
         checkpoint=ckpt,
         source_path=path,

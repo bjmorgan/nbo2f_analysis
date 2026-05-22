@@ -62,7 +62,7 @@ def build_moves_and_kwargs(cfg: RewlConfig, ce):
     n_atoms = len(atoms_gs)
     calc = ClusterExpansionCalculator(atoms_gs.copy(), ce)
     sublattice_index = resolve_anion_sublattice_index(calc)
-    moves = build_moves(cfg.system.n_sc, sublattice_index)
+    moves = build_moves(cfg.system.n_sc, sublattice_index, cfg.moves)
     kwargs = _build_ensemble_kwargs(cfg, moves, n_atoms)
     return atoms_gs, n_atoms, moves, kwargs
 
