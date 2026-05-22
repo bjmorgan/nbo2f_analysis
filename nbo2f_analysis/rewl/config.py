@@ -191,13 +191,30 @@ def load_yaml(path: str | Path) -> RewlConfig:
         )
 
     cs_raw = raw["config_search"]
+    raw_max_swaps = cs_raw["max_swaps"]
+    if not isinstance(raw_max_swaps, list) or not all(
+        isinstance(x, int) and not isinstance(x, bool) for x in raw_max_swaps
+    ):
+        raise ValueError(
+            f"config_search.max_swaps must be a list of ints, "
+            f"got {raw_max_swaps!r}"
+        )
+    if not raw_max_swaps:
+        raise ValueError(
+            "config_search.max_swaps must contain at least one entry"
+        )
+    if any(x < 1 for x in raw_max_swaps):
+        raise ValueError(
+            f"config_search.max_swaps entries must all be >= 1, "
+            f"got {raw_max_swaps!r}"
+        )
     cs = ConfigSearchCfg(
         n_workers=(
             int(cs_raw["n_workers"])
             if cs_raw.get("n_workers") is not None
             else None
         ),
-        max_swaps=tuple(int(x) for x in cs_raw["max_swaps"]),
+        max_swaps=tuple(raw_max_swaps),
         attempts_per_swap_count=int(cs_raw["attempts_per_swap_count"]),
         random_attempts=int(cs_raw["random_attempts"]),
     )
@@ -226,6 +243,10 @@ def load_yaml(path: str | Path) -> RewlConfig:
 
 def resolve_ce_path(cfg: RewlConfig) -> Path:
     """Return an absolute filesystem path to the CE file referenced by `cfg`."""
+    if cfg.system.ce_path is None and cfg.system.ce is None:
+        raise ValueError(
+            "system: neither 'ce' nor 'ce_path' is set; cannot resolve CE."
+        )
     if cfg.system.ce_path is not None:
         if not cfg.system.ce_path.is_file():
             raise FileNotFoundError(
