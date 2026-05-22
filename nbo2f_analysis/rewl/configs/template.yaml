@@ -1,0 +1,37 @@
+# Template REWL config. Copy and edit per (system size, window layout).
+# All keys are required unless marked OPTIONAL.
+
+random_seed: 0                       # default; CLI --seed overrides
+
+system:
+  n_sc: 6
+  ce: paircut9_5_5_ardr_n96          # named preset, OR set ce_path instead
+  # ce_path: ../local_fit.ce         # filesystem path (mutually exclusive with ce)
+
+windows:
+  energy_spacing: 0.1
+  list:
+    # [lo (eV), hi (eV), walkers]; adjacent windows MUST overlap.
+    - [-100.0, -98.0, 2]
+    - [-98.5, -96.0, 2]
+    - [-96.5, -94.0, 1]
+
+wl:
+  flatness_limit: 0.8
+  fill_factor_limit: 1.0e-12
+  schedule: "1_over_t"
+  flatness_mode: "pooled"            # "pooled" or "per_walker"
+  merge_cadence: "at_halve"          # "at_halve" or "never"
+  n_trials_per_walker: 20000000
+  block_size_sweeps: 10
+  trajectory_write_interval_sweeps: 100   # 0 disables trajectories
+
+config_search:
+  n_workers: null                    # null -> min(cpu_count, n_windows)
+  max_swaps: [1, 2, 3, 5, 8, 12, 20, 30, 50, 80, 120, 150, 200, 300]
+  attempts_per_swap_count: 200
+  random_attempts: 10000
+
+checkpoint:
+  filename: rewl_state.h5
+  interval_cycles: 1000              # 0 disables periodic writes; final always emits

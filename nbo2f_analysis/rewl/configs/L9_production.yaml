@@ -1,0 +1,40 @@
+# REWL production L=9 (mirrors analysis/fss_analysis/rewl_production_L9.py)
+random_seed: 42
+
+system:
+  n_sc: 9
+  ce: paircut9_5_5_ardr_n96
+
+windows:
+  energy_spacing: 0.1
+  list:
+    - [-25474.0, -25472.5, 2]
+    - [-25473.5, -25471.5, 2]
+    - [-25472.5, -25471.0, 2]
+    - [-25472.0, -25470.0, 2]
+    - [-25471.2, -25467.2, 2]
+    - [-25468.4, -25464.4, 2]
+    - [-25465.6, -25459.6, 1]
+    - [-25461.6, -25453.6, 1]
+    - [-25455.6, -25445.6, 1]
+    - [-25447.6, -25433.0, 1]
+
+wl:
+  flatness_limit: 0.8
+  fill_factor_limit: 1.0e-12
+  schedule: "1_over_t"
+  flatness_mode: "pooled"
+  merge_cadence: "at_halve"
+  n_trials_per_walker: 20000000
+  block_size_sweeps: 10
+  trajectory_write_interval_sweeps: 100
+
+config_search:
+  n_workers: null
+  max_swaps: [1, 2, 3, 5, 8, 12, 20, 30, 50, 80, 120, 150, 200, 300]
+  attempts_per_swap_count: 200
+  random_attempts: 10000
+
+checkpoint:
+  filename: rewl_state.h5
+  interval_cycles: 1000

@@ -1,0 +1,42 @@
+# REWL pilot L=12 (mirrors analysis/fss_analysis/rewl_pilot_L12.py)
+random_seed: 42
+
+system:
+  n_sc: 12
+  ce: paircut9_5_5_ardr_n96
+
+windows:
+  energy_spacing: 0.1
+  list:
+    - [-60383.0, -60380.0, 2]
+    - [-60380.5, -60377.5, 2]
+    - [-60378.0, -60375.0, 2]
+    - [-60375.5, -60372.0, 2]
+    - [-60372.5, -60367.0, 2]
+    - [-60368.0, -60362.0, 2]
+    - [-60363.0, -60355.0, 1]
+    - [-60357.0, -60345.0, 1]
+    - [-60347.0, -60333.0, 1]
+    - [-60335.0, -60319.0, 1]
+    - [-60321.0, -60305.0, 1]
+    - [-60307.0, -60298.0, 1]
+
+wl:
+  flatness_limit: 0.8
+  fill_factor_limit: 1.0e-12
+  schedule: "1_over_t"
+  flatness_mode: "pooled"
+  merge_cadence: "at_halve"
+  n_trials_per_walker: 20000000
+  block_size_sweeps: 10
+  trajectory_write_interval_sweeps: 100
+
+config_search:
+  n_workers: null
+  max_swaps: [1, 2, 3, 5, 8, 12, 20, 30, 50, 80, 120, 150, 200, 300, 400, 500, 700]
+  attempts_per_swap_count: 200
+  random_attempts: 10000
+
+checkpoint:
+  filename: rewl_state.h5
+  interval_cycles: 1000
