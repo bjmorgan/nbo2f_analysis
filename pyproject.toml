@@ -38,3 +38,7 @@ include = ["nbo2f_analysis*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: integration tests that take seconds-to-minutes (run with -m slow)",
+]
