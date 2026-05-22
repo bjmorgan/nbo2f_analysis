@@ -33,7 +33,7 @@ where = ["."]
 include = ["nbo2f_analysis*"]
 
 [tool.setuptools.package-data]
-"nbo2f_analysis.data" = ["ces/*.ce"]
+"nbo2f_analysis.data" = ["ces/*.ce", "orbit_representatives/*.vasp", "orbit_representatives/MANIFEST.txt"]
 "nbo2f_analysis.rewl" = ["configs/*.yaml"]
 
 [tool.pytest.ini_options]

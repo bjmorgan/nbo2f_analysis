@@ -1,0 +1,28 @@
+Manifest of all-cis-all-OOF orbit representatives at N=3
+============================================================
+
+file                                           |orbit|   |stab|   sg#  HM            chiral
+orbit_00_sg001_P1_stab01.vasp                     1296        1     1  P1            yes
+orbit_01_sg001_P1_stab01.vasp                     1296        1     1  P1            yes
+orbit_02_sg144_P3_1_stab09.vasp                    144        9   144  P3_1          yes
+orbit_03_sg001_P1_stab01.vasp                     1296        1     1  P1            yes
+orbit_04_sg005_C2_stab02.vasp                      648        2     5  C2            yes
+orbit_05_sg005_C2_stab02.vasp                      648        2     5  C2            yes
+orbit_06_sg001_P1_stab01.vasp                     1296        1     1  P1            yes
+orbit_07_sg001_P1_stab01.vasp                     1296        1     1  P1            yes
+orbit_08_sg001_P1_stab01.vasp                     1296        1     1  P1            yes
+orbit_09_sg001_P1_stab01.vasp                     1296        1     1  P1            yes
+orbit_10_sg005_C2_stab06.vasp                      216        6     5  C2            yes
+orbit_11_sg152_P3_121_stab54.vasp                   24       54   152  P3_121        yes
+
+Notes:
+- 3x3x3 cubic supercell of NbO2F on an ideal ReO3 lattice, a = 3.9 A.
+- 27 Nb at cubic-corner sites; 54 O + 27 F at edge-midpoint sites.
+- Each file is one representative of one symmetry-inequivalent orbit
+  under the parent Pm-3m x Z_3^3 group (1296 operations).
+- Each orbit is closed under inversion (full parent group includes
+  inversion), so its two enantiomers are within the same orbit and
+  the DFT energies of the enantiomer pair are trivially identical.
+  Twelve orbit energies are therefore sufficient.
+- Atoms within each file are sorted: 27 Nb, then 54 O, then 27 F.
+- Coordinates are direct (fractional).

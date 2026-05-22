@@ -5,6 +5,7 @@ structure generators for the ReO3-type NbO2F anion sublattice.
 """
 from __future__ import annotations
 
+from importlib.resources import files as _files
 from pathlib import Path
 
 import numpy as np
@@ -12,17 +13,18 @@ from ase import Atoms
 from icet import ClusterExpansion
 
 A = 3.902  # cubic lattice parameter (angstrom), matching CE primitive
-CE_PATH = Path(__file__).parent / "paircut9_rfe.ce"
+CE_PATH = Path(__file__).parent / "paircut9_5_5.ce"
 
 
 def _resolve_ce_path(ce: str | Path | None = None) -> Path:
-    """Resolve a CE path argument, falling back to the module-level default."""
+    """Resolve a CE path argument, falling back to the module-level default.
+
+    Absolute paths are returned unchanged. Relative paths are resolved
+    against the current working directory (standard CLI convention).
+    """
     if ce is None:
         return CE_PATH
-    p = Path(ce)
-    if not p.is_absolute():
-        p = Path(__file__).parent / p
-    return p
+    return Path(ce).resolve()
 
 
 def anion_index(n_sc: int, s: int, i: int, j: int, k: int) -> int:
@@ -275,8 +277,9 @@ def make_all_cis_N2(rng: np.random.Generator) -> Atoms:
     return atoms_from_f_mask(2, mask)
 
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_ORBIT_DIR = _REPO_ROOT / "structures" / "orbit_representatives"
+_ORBIT_DIR = Path(str(
+    _files("nbo2f_analysis.data") / "orbit_representatives"
+))
 
 _ORBIT_FILENAMES = {
     0: "orbit_00_sg001_P1_stab01.vasp",
@@ -335,3 +338,107 @@ def load_ce(ce: str | Path | None = None) -> ClusterExpansion:
             Relative paths are resolved against this script's directory.
     """
     return ClusterExpansion.read(str(_resolve_ce_path(ce)))
+
+
+# ---------------------------------------------------------------------------
+# PT defaults
+# ---------------------------------------------------------------------------
+
+N_SC_TARGET = 6
+TEMPERATURES_K = [
+    100.0, 150.0, 200.0, 250.0, 300.0, 325.0, 350.0, 362.5, 375.0,
+    387.5, 400.0, 412.5, 425.0, 437.5, 450.0, 500.0,
+    550.0, 600.0, 650.0, 700.0, 750.0, 800.0, 900.0, 1000.0,
+    1250.0, 1500.0, 2000.0, 3000.0,
+]
+BLOCK_SIZE = 1296  # ~2 sweeps at N=6 (3 * 6^3 = 648 anion sites x 2)
+N_CYCLES = 150
+
+
+# ---------------------------------------------------------------------------
+# F-mask tiling and ground-state builder
+# ---------------------------------------------------------------------------
+
+def tile_f_mask(
+    f_mask: np.ndarray, n_sc_small: int, tile_factor: int,
+) -> np.ndarray:
+    """Tile a periodic f-mask from an ``n_sc_small`` cell to a
+    ``n_sc_small * tile_factor`` cell."""
+    n_sc_big = n_sc_small * tile_factor
+    out = np.zeros(3 * n_sc_big**3, dtype=bool)
+    for s in range(3):
+        for i in range(n_sc_big):
+            for j in range(n_sc_big):
+                for k in range(n_sc_big):
+                    out_idx = anion_index(n_sc_big, s, i, j, k)
+                    src_idx = anion_index(
+                        n_sc_small, s,
+                        i % n_sc_small, j % n_sc_small, k % n_sc_small,
+                    )
+                    out[out_idx] = f_mask[src_idx]
+    return out
+
+
+def build_tiled_groundstate_atoms(n_sc: int = N_SC_TARGET) -> Atoms:
+    """Load orbit 11 (P3_121 @ 3x3x3), tile to ``n_sc x n_sc x n_sc``,
+    return stable-ordered Atoms.
+
+    Args:
+        n_sc: Cubic supercell size (must be a multiple of 3).
+
+    Returns:
+        Stable-ordered Atoms object with the chiral GS ordering tiled.
+    """
+    if n_sc % 3 != 0:
+        raise ValueError(f"n_sc must be a multiple of 3, got {n_sc}")
+    atoms_small = load_orbit_rep(11)
+    f_mask_small = _f_mask_from_atoms(atoms_small, n_sc=3)
+    f_mask_big = tile_f_mask(f_mask_small, 3, n_sc // 3)
+    return atoms_from_f_mask_stable(n_sc, f_mask_big)
+
+
+def occupations_to_f_mask(occupations: np.ndarray, n_sc: int) -> np.ndarray:
+    """Extract the F f-mask from a stable-ordered occupation vector.
+
+    In the stable ordering produced by ``atoms_from_f_mask_stable``, the
+    first ``n_sc**3`` sites are Nb, and the remaining ``3 * n_sc**3``
+    sites are anions in ``anion_index`` order. F (atomic number 9) maps
+    to True, O (atomic number 8) to False.
+    """
+    return occupations[n_sc**3:] == 9
+
+
+def cis_fraction(f_mask: np.ndarray, n_sc: int) -> float:
+    """Fraction of Nb cations with 2 F on non-opposite vertices (cis)."""
+    neighbours = nb_anion_neighbours(n_sc)
+    f_per_nb = f_mask[neighbours].sum(axis=1)
+    n_cis = 0
+    for b in range(n_sc**3):
+        if f_per_nb[b] != 2:
+            continue
+        positions = np.where(f_mask[neighbours[b]])[0]
+        pair = frozenset({int(positions[0]), int(positions[1])})
+        if pair not in _TRANS_PAIRS:
+            n_cis += 1
+    return n_cis / n_sc**3
+
+
+def nbo4f2_fraction(f_mask: np.ndarray, n_sc: int) -> float:
+    """Fraction of Nb cations with the local 2 F : 4 O stoichiometry.
+
+    This counts NbO4F2 coordination irrespective of cis/trans geometry.
+    Tracks satisfaction of Pauling's second rule independently of the
+    cis-trans choice tracked by :func:`cis_fraction`.
+
+    Args:
+        f_mask: Boolean mask of length ``3 * n_sc**3`` flagging F-occupied
+            anion sites in canonical ``atoms_from_f_mask_stable`` ordering.
+        n_sc: Cubic supercell size (number of cation sites along each axis).
+
+    Returns:
+        Fraction of Nb cations whose six-anion shell contains exactly
+        two F and four O.
+    """
+    neighbours = nb_anion_neighbours(n_sc)
+    f_per_nb = f_mask[neighbours].sum(axis=1)
+    return float((f_per_nb == 2).mean())
