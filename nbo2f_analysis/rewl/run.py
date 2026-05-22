@@ -56,7 +56,7 @@ def _build_ensemble_kwargs(cfg: RewlConfig, moves, n_atoms: int) -> dict:
     }
 
 
-def _build_moves_and_kwargs(cfg: RewlConfig, ce):
+def build_moves_and_kwargs(cfg: RewlConfig, ce):
     """Replicate the move + kwargs construction used by both run and resume."""
     atoms_gs = build_tiled_groundstate_atoms(n_sc=cfg.system.n_sc)
     n_atoms = len(atoms_gs)
@@ -80,7 +80,7 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
     print(f"Loading CE from {resolve_ce_path(cfg)}")
     ce = ClusterExpansion.read(str(resolve_ce_path(cfg)))
 
-    atoms_gs, n_atoms, _, ensemble_kwargs = _build_moves_and_kwargs(cfg, ce)
+    atoms_gs, n_atoms, _, ensemble_kwargs = build_moves_and_kwargs(cfg, ce)
     block_size = n_atoms * cfg.wl.block_size_sweeps
     n_cycles_target = cfg.wl.n_trials_per_walker // block_size
     n_windows = len(cfg.windows.list)
@@ -163,7 +163,7 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
 
     print(f"Loading CE from {resolve_ce_path(cfg)}")
     ce = ClusterExpansion.read(str(resolve_ce_path(cfg)))
-    _, n_atoms, _, ensemble_kwargs = _build_moves_and_kwargs(cfg, ce)
+    _, n_atoms, _, ensemble_kwargs = build_moves_and_kwargs(cfg, ce)
     block_size = n_atoms * cfg.wl.block_size_sweeps
 
     print(f"Resuming from {checkpoint_path}")
