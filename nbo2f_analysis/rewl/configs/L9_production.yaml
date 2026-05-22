@@ -29,6 +29,13 @@ wl:
   block_size_sweeps: 10
   trajectory_write_interval_sweeps: 100
 
+moves:
+  - {type: pair_swap, weight: 0.1}
+  - {type: row_shift, weight: 0.2}
+  - {type: motif_shift, weight: 0.5}
+  - {type: chain_swap, weight: 0.5}
+  - {type: row_reflect, weight: 0.5}
+
 config_search:
   n_workers: null
   max_swaps: [1, 2, 3, 5, 8, 12, 20, 30, 50, 80, 120, 150, 200, 300]
