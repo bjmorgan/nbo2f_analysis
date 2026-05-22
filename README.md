@@ -32,10 +32,13 @@ Then verify the editable installs are intact with `pip list | grep
     rewl resume      [--extra-cycles N] [--out-dir DIR] <config.yaml>
     rewl postprocess [--out-dir DIR] <config.yaml>
 
-The driver writes the checkpoint, per-window CSVs, the stitched DOS,
-and a 4-panel WL-health diagnostic figure. Canonical reweighting is
-a separate post-processing step provided by `mchammer-pt`:
+The driver writes the checkpoint (`rewl_state.h5`), three run-summary
+CSVs (`convergence.csv`, `exchange_rates.csv`,
+`per_move_rejection_rates.csv`), and a 4-panel WL-health diagnostic
+figure (`rewl_diagnostics.png`). Stitching and canonical reweighting
+are separate post-processing steps provided by `mchammer-pt`:
 
+    mchammer-pt-stitch rewl_state.h5 -o stitched_dos.csv
     mchammer-pt-reweight stitched_dos.csv --T-min 200 --T-max 800 --T-step 2.0 -o canonical_reweighted.csv
 
 See `nbo2f_analysis/rewl/configs/template.yaml` for the full
