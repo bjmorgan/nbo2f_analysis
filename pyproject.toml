@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nbo2f-analysis"
+version = "0.1.0"
+description = "Analysis tools for NbO2F finite-size scaling, including the REWL driver."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "scipy",
+    "h5py",
+    "pyyaml",
+    "ase",
+    "bsym",
+    "icet @ git+https://gitlab.com/bjmorgan/icet.git@master",
+    "mchammer-pt @ git+https://github.com/bjmorgan/mchammer-pt.git",
+    "mchammer-moves @ git+https://github.com/bjmorgan/mchammer-moves.git",
+    "chainorder @ git+https://github.com/bjmorgan/chainorder.git",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+rewl = "nbo2f_analysis.rewl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nbo2f_analysis*"]
+
+[tool.setuptools.package-data]
+"nbo2f_analysis.data" = ["ces/*.ce"]
+"nbo2f_analysis.rewl" = ["configs/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
