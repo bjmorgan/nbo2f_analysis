@@ -5,7 +5,6 @@ structure generators for the ReO3-type NbO2F anion sublattice.
 """
 from __future__ import annotations
 
-from importlib.resources import files as _files
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +12,7 @@ from ase import Atoms
 from icet import ClusterExpansion
 
 A = 3.902  # cubic lattice parameter (angstrom), matching CE primitive
-CE_PATH = Path(__file__).parent / "paircut9_5_5.ce"
+CE_PATH = Path(__file__).parent / "data" / "ces" / "paircut9_5_5_ardr_n96.ce"
 
 
 def _resolve_ce_path(ce: str | Path | None = None) -> Path:
@@ -277,9 +276,7 @@ def make_all_cis_N2(rng: np.random.Generator) -> Atoms:
     return atoms_from_f_mask(2, mask)
 
 
-_ORBIT_DIR = Path(str(
-    _files("nbo2f_analysis.data") / "orbit_representatives"
-))
+_ORBIT_DIR = Path(__file__).parent / "data" / "orbit_representatives"
 
 _ORBIT_FILENAMES = {
     0: "orbit_00_sg001_P1_stab01.vasp",
