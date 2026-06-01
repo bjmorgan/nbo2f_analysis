@@ -23,9 +23,11 @@ from .ce_tools import anion_index
 def build_reflection_permutation(n_sc: int, axis: int) -> dict[int, int]:
     """Map each anion site to its image under a ``<100>`` reflection.
 
-    Reflects across the plane perpendicular to ``axis`` through the
-    origin: the cell coordinate along ``axis`` is sent to ``(-c) % n_sc``
-    and the other two are unchanged. The sublattice ``s`` is preserved.
+    Reflects each anion site to its mirror image across the plane
+    perpendicular to ``axis`` through the origin: the fractional
+    coordinate along ``axis`` is negated (modulo the cell) and the other
+    two are unchanged. The sublattice ``s`` is preserved.
+
     The sublattice whose edge-midpoint offset lies along ``axis``
     (``s == axis``) has a half-integer coordinate there and maps as
     ``c -> n_sc - 1 - c``; the other two sublattices have an integer
