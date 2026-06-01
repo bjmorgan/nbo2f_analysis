@@ -79,7 +79,7 @@ class CellReflect(SitePermutation):
     inverse). Because a ``<100>`` reflection is an exact symmetry of the
     parent ReO3 lattice and of the cluster expansion, the proposed
     configuration is iso-energetic with the current one and lies in the
-    enantiomeric chiral basin -- bridging the two degenerate handednesses
+    enantiomeric chiral basin, bridging the two degenerate handednesses
     of the ordered phase. Detailed balance and F-count preservation are
     guaranteed by :class:`SitePermutation`.
 
