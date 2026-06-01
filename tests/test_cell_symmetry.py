@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from nbo2f_analysis.cell_symmetry import build_reflection_permutation
+from nbo2f_analysis.cell_symmetry import (
+    CellReflect,
+    build_reflection_permutation,
+)
 from nbo2f_analysis.ce_tools import anion_index, index_to_anion
 
 
@@ -66,16 +69,12 @@ def test_build_reflection_permutation_rejects_bad_axis():
 
 
 def test_cell_reflect_name_and_operation_count():
-    from nbo2f_analysis.cell_symmetry import CellReflect
-
     move = CellReflect(n_sc=4)
     assert move.name == "cell_reflect"
     assert move.n_operations == 3
 
 
 def test_cell_reflect_operations_match_builder():
-    from nbo2f_analysis.cell_symmetry import CellReflect
-
     n_sc = 4
     move = CellReflect(n_sc=n_sc)
     expected = [build_reflection_permutation(n_sc, axis) for axis in (0, 1, 2)]
