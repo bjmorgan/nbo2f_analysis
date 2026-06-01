@@ -113,4 +113,4 @@ def test_reflecting_groundstate_is_isoenergetic_enantiomer():
     assert not np.array_equal(reflected, occ)
     # ...but the cluster-expansion energy is unchanged.
     e_after = float(calc.calculate_total(occupations=reflected))
-    assert e_after == pytest.approx(e_before, abs=1e-6)
+    assert e_after == pytest.approx(e_before, rel=0, abs=1e-6)
