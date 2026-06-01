@@ -43,24 +43,54 @@ def test_reflection_omits_fixed_points(axis):
     assert all(src != dst for src, dst in perm.items())
 
 
-def test_reflection_geometry_half_integer_sublattice():
-    # axis=0, s=0 carries the half-integer x offset: i -> n_sc-1-i.
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_reflection_geometry_half_integer_sublattice(axis):
+    # The sublattice s == axis carries the half-integer offset along axis,
+    # so its coordinate there maps c -> n_sc - 1 - c. Use along-axis
+    # coordinate 1 (never a fixed point at n_sc = 4) so the site moves.
     n_sc = 4
     cation_offset = n_sc**3
-    perm = build_reflection_permutation(n_sc, 0)
-    src = cation_offset + anion_index(n_sc, 0, 1, 2, 3)
-    dst = cation_offset + anion_index(n_sc, 0, n_sc - 1 - 1, 2, 3)
+    perm = build_reflection_permutation(n_sc, axis)
+    src_coords = [0, 2, 3]
+    src_coords[axis] = 1
+    dst_coords = list(src_coords)
+    dst_coords[axis] = n_sc - 1 - src_coords[axis]
+    src = cation_offset + anion_index(n_sc, axis, *src_coords)
+    dst = cation_offset + anion_index(n_sc, axis, *dst_coords)
     assert perm[src] == dst
 
 
-def test_reflection_geometry_integer_sublattice():
-    # axis=0, s=1 has integer x: i -> (n_sc-i) % n_sc.
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_reflection_geometry_integer_sublattice(axis):
+    # A sublattice s != axis has an integer coordinate along axis, so it
+    # maps c -> (n_sc - c) % n_sc. Use along-axis coordinate 1 (never a
+    # fixed point at n_sc = 4) so the site moves.
     n_sc = 4
     cation_offset = n_sc**3
-    perm = build_reflection_permutation(n_sc, 0)
-    src = cation_offset + anion_index(n_sc, 1, 1, 2, 3)
-    dst = cation_offset + anion_index(n_sc, 1, (n_sc - 1) % n_sc, 2, 3)
+    perm = build_reflection_permutation(n_sc, axis)
+    s = (axis + 1) % 3  # an integer sublattice for this axis
+    src_coords = [0, 2, 3]
+    src_coords[axis] = 1
+    dst_coords = list(src_coords)
+    dst_coords[axis] = (n_sc - src_coords[axis]) % n_sc
+    src = cation_offset + anion_index(n_sc, s, *src_coords)
+    dst = cation_offset + anion_index(n_sc, s, *dst_coords)
     assert perm[src] == dst
+
+
+@pytest.mark.parametrize("n_sc", [3, 4])
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_reflection_moved_site_count(n_sc, axis):
+    # Pin the fixed-point structure, which is parity-dependent and differs
+    # between the two sublattice types. The half-integer sublattice
+    # (s == axis) has a fixed layer only for odd n_sc (at c = (n_sc-1)/2);
+    # the two integer sublattices always fix c = 0, plus c = n_sc/2 when
+    # n_sc is even. This count catches a rule applied to the wrong
+    # sublattice, which the structural tests cannot.
+    half_fixed = 1 if n_sc % 2 else 0
+    int_fixed = 1 if n_sc % 2 else 2
+    expected = (n_sc - half_fixed) * n_sc**2 + 2 * (n_sc - int_fixed) * n_sc**2
+    assert len(build_reflection_permutation(n_sc, axis)) == expected
 
 
 def test_build_reflection_permutation_rejects_bad_axis():
@@ -82,7 +112,8 @@ def test_cell_reflect_operations_match_builder():
 
 
 @pytest.mark.slow
-def test_reflecting_groundstate_is_isoenergetic_enantiomer():
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_reflecting_groundstate_is_isoenergetic_enantiomer(axis):
     from pathlib import Path
 
     import numpy as np
@@ -103,8 +134,8 @@ def test_reflecting_groundstate_is_isoenergetic_enantiomer():
     calc = ClusterExpansionCalculator(gs.copy(), ce)
     e_before = float(calc.calculate_total(occupations=occ))
 
-    # Apply the x-reflection the way SitePermutation does: new[i] = old[j].
-    perm = build_reflection_permutation(n_sc, axis=0)
+    # Apply the reflection the way SitePermutation does: new[i] = old[j].
+    perm = build_reflection_permutation(n_sc, axis=axis)
     reflected = occ.copy()
     for src, dst in perm.items():
         reflected[src] = occ[dst]
