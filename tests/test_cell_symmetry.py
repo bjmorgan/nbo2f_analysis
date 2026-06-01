@@ -111,7 +111,6 @@ def test_cell_reflect_operations_match_builder():
     assert move.operations == expected
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("axis", [0, 1, 2])
 def test_reflecting_groundstate_is_isoenergetic_enantiomer(axis):
     from pathlib import Path
