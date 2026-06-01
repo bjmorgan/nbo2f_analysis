@@ -13,6 +13,7 @@ from typing import Any
 
 from mchammer_moves import IndexSetSwap, PairSwap
 
+from nbo2f_analysis.cell_symmetry import CellReflect
 from nbo2f_analysis.chain_geometry import (
     MotifShift,
     RowReflect,
@@ -46,6 +47,7 @@ _MOVE_BUILDERS: dict[str, Callable[[int, int], Any]] = {
         require_matching_composition=False,
     ),
     "row_reflect": lambda n_sc, sublattice_index: RowReflect(n_sc),
+    "cell_reflect": lambda n_sc, sublattice_index: CellReflect(n_sc),
 }
 
 ALLOWED_MOVE_TYPES: frozenset[str] = frozenset(_MOVE_BUILDERS)
