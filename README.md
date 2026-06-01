@@ -7,6 +7,8 @@ paper. Provides:
   ground-state construction.
 - `chain_geometry` — anion-chain decomposition and chain-aware MC moves
   for the ReO3 topology.
+- `cell_symmetry` — whole-cell `<100>` reflection move (`CellReflect`)
+  for bridging the enantiomeric chiral basins.
 - `rewl` — Replica-Exchange Wang-Landau driver for finite-size scaling
   studies.
 - Bundled production CE and 12 N=3 orbit representatives under
