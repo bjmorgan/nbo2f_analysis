@@ -32,4 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move-registry-driven configurable move set: the YAML config's
   ``moves:`` section selects from a registered set of move types
   (``pair_swap``, ``row_shift``, ``motif_shift``, ``chain_swap``,
-  ``row_reflect``) with per-entry weights.
+  ``row_reflect``, ``cell_reflect``) with per-entry weights.
+- ``cell_symmetry`` -- whole-cell ``<100>`` mirror geometry and the
+  ``CellReflect`` move, which reflects the anion sublattice across a
+  ``<100>`` plane to bridge the degenerate enantiomeric chiral basins
+  of the ordered phase (iso-energetic; permutes anions only).
