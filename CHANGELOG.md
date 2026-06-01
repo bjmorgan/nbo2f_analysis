@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-01
+
+### Added
+
+- ``cell_symmetry`` — whole-cell ``<100>`` mirror geometry and the
+  ``CellReflect`` move, which reflects the anion sublattice across a
+  ``<100>`` plane to bridge the degenerate enantiomeric chiral basins
+  of the ordered phase (iso-energetic; permutes anions only).
+- ``cell_reflect`` registered as a move type in the move registry,
+  selectable from the YAML ``moves:`` section like the other moves.
+
+## [0.1.0] - 2026-05-22
+
 ### Added
 
 - ``ce_tools`` — atoms builders, F-mask manipulation, orbit-rep
@@ -32,8 +45,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move-registry-driven configurable move set: the YAML config's
   ``moves:`` section selects from a registered set of move types
   (``pair_swap``, ``row_shift``, ``motif_shift``, ``chain_swap``,
-  ``row_reflect``, ``cell_reflect``) with per-entry weights.
-- ``cell_symmetry`` — whole-cell ``<100>`` mirror geometry and the
-  ``CellReflect`` move, which reflects the anion sublattice across a
-  ``<100>`` plane to bridge the degenerate enantiomeric chiral basins
-  of the ordered phase (iso-energetic; permutes anions only).
+  ``row_reflect``) with per-entry weights.
