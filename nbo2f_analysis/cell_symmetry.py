@@ -68,3 +68,29 @@ def build_reflection_permutation(n_sc: int, axis: int) -> dict[int, int]:
                     if src != dst:
                         perm[src] = dst
     return perm
+
+
+class CellReflect(SitePermutation):
+    """Reflect the whole cell across a ``<100>`` plane (anion sublattice).
+
+    Offers the three axis-orientation reflections (planes perpendicular to
+    x, y, z through the origin) as a single move; each proposal picks one
+    orientation uniformly and applies it (each reflection is its own
+    inverse). Because a ``<100>`` reflection is an exact symmetry of the
+    parent ReO3 lattice and of the cluster expansion, the proposed
+    configuration is iso-energetic with the current one and lies in the
+    enantiomeric chiral basin -- bridging the two degenerate handednesses
+    of the ordered phase. Detailed balance and F-count preservation are
+    guaranteed by :class:`SitePermutation`.
+
+    Args:
+        n_sc: Cubic supercell repeat count along each axis.
+    """
+
+    def __init__(self, n_sc: int) -> None:
+        super().__init__(
+            operations=[
+                build_reflection_permutation(n_sc, axis) for axis in (0, 1, 2)
+            ],
+            name="cell_reflect",
+        )

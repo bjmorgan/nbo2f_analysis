@@ -63,3 +63,20 @@ def test_reflection_geometry_integer_sublattice():
 def test_build_reflection_permutation_rejects_bad_axis():
     with pytest.raises(ValueError, match="axis must be 0, 1, or 2"):
         build_reflection_permutation(4, 3)
+
+
+def test_cell_reflect_name_and_operation_count():
+    from nbo2f_analysis.cell_symmetry import CellReflect
+
+    move = CellReflect(n_sc=4)
+    assert move.name == "cell_reflect"
+    assert move.n_operations == 3
+
+
+def test_cell_reflect_operations_match_builder():
+    from nbo2f_analysis.cell_symmetry import CellReflect
+
+    n_sc = 4
+    move = CellReflect(n_sc=n_sc)
+    expected = [build_reflection_permutation(n_sc, axis) for axis in (0, 1, 2)]
+    assert move.operations == expected
