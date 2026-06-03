@@ -14,6 +14,7 @@ from nbo2f_analysis.rewl.search import (
     _windows_containing,
     _record_config,
     _inject_ground_state,
+    _lingering_backstop,
 )
 
 
@@ -122,3 +123,90 @@ def test_find_all_window_configs_returns_distinct_in_window_atoms():
             assert lo <= e <= hi, f"energy {e} outside [{lo}, {hi}]"
             keys.add(atoms.numbers.tobytes())
         assert len(keys) == len(atoms_list), "configs within a window not distinct"
+
+
+@pytest.mark.slow
+def test_lingering_backstop_tops_up_a_short_window():
+    n_sc = 3
+    from icet import ClusterExpansion
+    from mchammer.calculators import ClusterExpansionCalculator
+
+    from nbo2f_analysis.rewl.config import MovesCfg, MoveSpec
+    from nbo2f_analysis.rewl.nbo2f import (
+        build_moves,
+        resolve_anion_sublattice_index,
+    )
+
+    ce = ClusterExpansion.read(_ce_path())
+    gs = build_tiled_groundstate_atoms(n_sc=n_sc)
+    calc = ClusterExpansionCalculator(gs.copy(), ce)
+    e_gs = float(calc.calculate_total(occupations=gs.numbers))
+    # One wide window around the GS so the lingering walk stays in-band.
+    windows = [(e_gs - 1.0, e_gs + 5.0)]
+    counts = [3]
+    # Seed the window with the GS as its single anchor.
+    found = [[gs.numbers.copy()]]
+    seen = [{gs.numbers.tobytes()}]
+    moves_cfg = MovesCfg(
+        list=(
+            MoveSpec(type="pair_swap", weight=0.3),
+            MoveSpec(type="chain_swap", weight=0.5),
+        )
+    )
+    sub = resolve_anion_sublattice_index(calc)
+    moves = build_moves(n_sc, sub, moves_cfg)
+    params = SearchParams(
+        temperature_high=3000.0,
+        temperature_low=100.0,
+        n_temperature_levels=4,
+        sweeps_per_level=2,
+        harvest_interval_sweeps=1,
+        max_anneals_per_worker=1,
+        backstop_temperature=400.0,
+        backstop_sweeps=200,
+    )
+    _lingering_backstop(found, seen, windows, counts, gs, calc, moves, params)
+    assert len(found[0]) == 3
+    keys = {n.tobytes() for n in found[0]}
+    assert len(keys) == 3
+    for numbers in found[0]:
+        e = float(calc.calculate_total(occupations=numbers))
+        assert windows[0][0] <= e <= windows[0][1]
+
+
+@pytest.mark.slow
+def test_find_all_window_configs_raises_when_window_unfillable():
+    n_sc = 3
+    from icet import ClusterExpansion
+    from mchammer.calculators import ClusterExpansionCalculator
+
+    from nbo2f_analysis.rewl.config import MovesCfg, MoveSpec
+
+    ce = ClusterExpansion.read(_ce_path())
+    gs = build_tiled_groundstate_atoms(n_sc=n_sc)
+    calc = ClusterExpansionCalculator(gs.copy(), ce)
+    e_gs = float(calc.calculate_total(occupations=gs.numbers))
+    # An empty band far below any reachable energy can never be filled.
+    windows = [(e_gs - 100.0, e_gs - 50.0)]
+    counts = [1]
+    moves_cfg = MovesCfg(list=(MoveSpec(type="pair_swap", weight=1.0),))
+    params = SearchParams(
+        temperature_high=2000.0,
+        temperature_low=100.0,
+        n_temperature_levels=2,
+        sweeps_per_level=1,
+        harvest_interval_sweeps=1,
+        max_anneals_per_worker=1,
+        backstop_temperature=200.0,
+        backstop_sweeps=0,
+    )
+    with pytest.raises(RuntimeError, match="Could not fill windows"):
+        find_all_window_configs(
+            ce_path=_ce_path(),
+            n_sc=n_sc,
+            windows=windows,
+            counts=counts,
+            moves_cfg=moves_cfg,
+            n_workers=1,
+            params=params,
+        )

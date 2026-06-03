@@ -181,9 +181,53 @@ def _anneal_worker(
             current = ens.structure.copy()
 
 
-def _lingering_backstop(found, seen, windows, counts, atoms_gs, calc, moves, params):
-    """Placeholder; replaced in Task 4 with the real lingering top-up."""
-    return
+def _lingering_backstop(
+    found: list[list[np.ndarray]],
+    seen: list[set[bytes]],
+    windows: list[tuple[float, float]],
+    counts: list[int],
+    atoms_gs: Atoms,
+    calc,
+    moves,
+    params: SearchParams,
+) -> None:
+    """Top up still-short windows by lingering near their band.
+
+    For each window with an anchor but fewer than ``counts[i]`` configs,
+    runs a fixed-temperature canonical walk (production moves, Metropolis
+    on the real CE energy) seeded from one of its found configs, harvesting
+    further distinct in-window configs. Windows with no anchor are left for
+    the caller's hard error. Mutates ``found`` and ``seen`` in place.
+    """
+    from mchammer_moves import CustomCanonicalEnsemble
+
+    n_atoms = len(atoms_gs)
+    total_steps = params.backstop_sweeps * n_atoms
+    harvest_batch = params.harvest_interval_sweeps * n_atoms
+
+    for i, (lo, hi) in enumerate(windows):
+        if len(found[i]) >= counts[i] or not found[i]:
+            continue
+        anchor = atoms_gs.copy()
+        anchor.numbers = found[i][0]
+        ens = CustomCanonicalEnsemble(
+            structure=anchor,
+            calculator=calc,
+            temperature=params.backstop_temperature,
+            moves=moves,
+            random_seed=i + 1,
+        )
+        done = 0
+        while done < total_steps and len(found[i]) < counts[i]:
+            batch = min(harvest_batch, total_steps - done)
+            ens.run(batch)
+            done += batch
+            numbers = ens.structure.numbers
+            e = float(calc.calculate_total(occupations=numbers))
+            key = numbers.tobytes()
+            if lo <= e <= hi and key not in seen[i]:
+                seen[i].add(key)
+                found[i].append(numbers.copy())
 
 
 def find_all_window_configs(
