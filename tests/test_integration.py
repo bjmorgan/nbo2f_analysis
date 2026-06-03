@@ -40,9 +40,14 @@ moves:
   - {{type: row_reflect, weight: 0.5}}
 config_search:
   n_workers: 2
-  max_swaps: [1, 2, 3]
-  attempts_per_swap_count: 50
-  random_attempts: 100
+  temperature_high: 2000.0
+  temperature_low: 100.0
+  n_temperature_levels: 4
+  sweeps_per_level: 2
+  harvest_interval_sweeps: 1
+  max_anneals_per_worker: 20
+  backstop_temperature: 200.0
+  backstop_sweeps: 20
 checkpoint:
   filename: rewl_state.h5
   interval_cycles: 5

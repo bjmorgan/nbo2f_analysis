@@ -98,15 +98,22 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
         else min(os.cpu_count() or 1, n_windows)
     )
     search_params = SearchParams(
-        max_swaps=cfg.config_search.max_swaps,
-        attempts_per_swap_count=cfg.config_search.attempts_per_swap_count,
-        random_attempts=cfg.config_search.random_attempts,
+        temperature_high=cfg.config_search.temperature_high,
+        temperature_low=cfg.config_search.temperature_low,
+        n_temperature_levels=cfg.config_search.n_temperature_levels,
+        sweeps_per_level=cfg.config_search.sweeps_per_level,
+        harvest_interval_sweeps=cfg.config_search.harvest_interval_sweeps,
+        max_anneals_per_worker=cfg.config_search.max_anneals_per_worker,
+        backstop_temperature=cfg.config_search.backstop_temperature,
+        backstop_sweeps=cfg.config_search.backstop_sweeps,
     )
     print("Finding starting configurations (parallel search)...")
     atoms_per_window = find_all_window_configs(
         ce_path=str(resolve_ce_path(cfg)),
         n_sc=cfg.system.n_sc,
         windows=cfg.windows.bounds,
+        counts=cfg.windows.walkers_per_window,
+        moves_cfg=cfg.moves,
         n_workers=n_workers,
         params=search_params,
     )
