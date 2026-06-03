@@ -65,6 +65,18 @@ def test_inject_ground_state_uses_only_lowest_containing_window():
     assert len(found[1]) == 0
 
 
+def test_inject_ground_state_is_noop_when_outside_all_windows():
+    windows = [(-10.0, -8.0), (-9.0, -7.0)]
+    counts = [2, 2]
+    found = [[], []]
+    seen = [set(), set()]
+    gs = np.array([7, 8, 9], dtype=np.int64)
+    # e_gs below every window: best-effort seeding records nothing.
+    _inject_ground_state(found, seen, windows, counts, -50.0, gs)
+    assert found == [[], []]
+    assert seen == [set(), set()]
+
+
 def _ce_path() -> str:
     return str(
         Path(__file__).resolve().parent.parent

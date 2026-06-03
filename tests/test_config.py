@@ -238,6 +238,20 @@ def test_load_yaml_rejects_negative_backstop_sweeps(tmp_path):
         load_yaml(p)
 
 
+def test_load_yaml_accepts_zero_backstop_sweeps(tmp_path):
+    # 0 disables the backstop and must remain a valid value (the guard is
+    # `< 0`, asymmetric with its `>= 1` neighbours by design).
+    p = _cfg_with(
+        tmp_path,
+        "config_search: {n_workers: 1, temperature_high: 2000.0, "
+        "temperature_low: 100.0, n_temperature_levels: 4, sweeps_per_level: 2, "
+        "harvest_interval_sweeps: 1, max_anneals_per_worker: 4, "
+        "backstop_temperature: 150.0, backstop_sweeps: 0}",
+    )
+    cfg = load_yaml(p)
+    assert cfg.config_search.backstop_sweeps == 0
+
+
 def test_resolve_ce_path_raises_when_both_none():
     from dataclasses import replace
     from nbo2f_analysis.rewl.config import resolve_ce_path

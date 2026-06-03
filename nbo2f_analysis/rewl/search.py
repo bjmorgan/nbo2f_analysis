@@ -29,6 +29,10 @@ _SEED_RANGE = 2**31
 # Grace period (seconds) for search workers to observe the stop signal and
 # exit cleanly before any straggler is terminated.
 _SHUTDOWN_TIMEOUT_S = 15.0
+# Sentinel a worker puts on the result queue to report an uncaught
+# exception, so the parent re-raises it rather than misreporting the fault
+# as an unfillable window.
+_WORKER_ERROR = "__worker_error__"
 
 
 @dataclass(frozen=True)
@@ -47,7 +51,11 @@ class SearchParams:
 def _geometric_schedule(
     t_high: float, t_low: float, n_levels: int
 ) -> list[float]:
-    """Geometric temperatures from ``t_high`` down to ``t_low`` inclusive."""
+    """Geometric temperatures from ``t_high`` down to ``t_low`` inclusive.
+
+    ``n_levels == 1`` is a degenerate single-temperature schedule: it
+    returns ``[t_high]`` only, with no cooling.
+    """
     if n_levels == 1:
         return [t_high]
     ratio = (t_low / t_high) ** (1.0 / (n_levels - 1))
@@ -117,68 +125,87 @@ def _anneal_worker(
     stop_event: MpEvent,
     result_queue: MpQueue,
 ) -> None:
-    from icet import ClusterExpansion
-    from mchammer.calculators import ClusterExpansionCalculator
-    from mchammer_moves import CustomCanonicalEnsemble
+    """Run independent anneals, emitting distinct in-window configs.
 
-    from nbo2f_analysis.rewl.nbo2f import (
-        build_moves,
-        resolve_anion_sublattice_index,
-    )
+    A spawn-process target. Builds the calculator and production move set
+    once, then repeatedly anneals from a fresh random fill down the
+    temperature schedule, putting each novel in-window occupation vector on
+    ``result_queue`` as ``(energy, numbers)``. Returns early whenever
+    ``stop_event`` is set.
 
-    ce = ClusterExpansion.read(ce_path)
-    atoms_gs = build_tiled_groundstate_atoms(n_sc=n_sc)
-    n_atoms = len(atoms_gs)
-    calc = ClusterExpansionCalculator(atoms_gs.copy(), ce)
-    sublattice_index = resolve_anion_sublattice_index(calc)
-    moves = build_moves(n_sc, sublattice_index, moves_cfg)
+    Any exception is reported to the parent as a ``(_WORKER_ERROR,
+    traceback)`` sentinel rather than dying quietly and being misread as an
+    unfillable window. A hard C++ crash that kills the process outright
+    cannot be caught here; the parent still detects that via its
+    dead-worker check.
+    """
+    try:
+        from icet import ClusterExpansion
+        from mchammer.calculators import ClusterExpansionCalculator
+        from mchammer_moves import CustomCanonicalEnsemble
 
-    rng = np.random.default_rng(seed)
-    temps = _geometric_schedule(
-        params.temperature_high,
-        params.temperature_low,
-        params.n_temperature_levels,
-    )
-    n_anion = 3 * n_sc**3
-    steps_per_level = params.sweeps_per_level * n_atoms
-    harvest_batch = params.harvest_interval_sweeps * n_atoms
-    emitted: set[bytes] = set()
+        from nbo2f_analysis.rewl.nbo2f import (
+            build_moves,
+            resolve_anion_sublattice_index,
+        )
 
-    def _maybe_emit(numbers: np.ndarray) -> None:
-        e = float(calc.calculate_total(occupations=numbers))
-        if not _windows_containing(e, windows):
-            return
-        key = numbers.tobytes()
-        if key in emitted:
-            return
-        emitted.add(key)
-        result_queue.put((e, numbers.copy()))
+        ce = ClusterExpansion.read(ce_path)
+        atoms_gs = build_tiled_groundstate_atoms(n_sc=n_sc)
+        n_atoms = len(atoms_gs)
+        calc = ClusterExpansionCalculator(atoms_gs.copy(), ce)
+        sublattice_index = resolve_anion_sublattice_index(calc)
+        moves = build_moves(n_sc, sublattice_index, moves_cfg)
 
-    for _ in range(params.max_anneals_per_worker):
-        if stop_event.is_set():
-            return
-        mask = np.zeros(n_anion, dtype=bool)
-        mask[rng.choice(n_anion, size=n_sc**3, replace=False)] = True
-        current = atoms_from_f_mask_stable(n_sc, mask)
-        for t in temps:
+        rng = np.random.default_rng(seed)
+        temps = _geometric_schedule(
+            params.temperature_high,
+            params.temperature_low,
+            params.n_temperature_levels,
+        )
+        n_anion = 3 * n_sc**3
+        steps_per_level = params.sweeps_per_level * n_atoms
+        harvest_batch = params.harvest_interval_sweeps * n_atoms
+        emitted: set[bytes] = set()
+
+        def _maybe_emit(numbers: np.ndarray) -> None:
+            e = float(calc.calculate_total(occupations=numbers))
+            if not _windows_containing(e, windows):
+                return
+            key = numbers.tobytes()
+            if key in emitted:
+                return
+            emitted.add(key)
+            result_queue.put((e, numbers.copy()))
+
+        for _ in range(params.max_anneals_per_worker):
             if stop_event.is_set():
                 return
-            ens = CustomCanonicalEnsemble(
-                structure=current,
-                calculator=calc,
-                temperature=t,
-                moves=moves,
-                random_seed=int(rng.integers(_SEED_RANGE)),
-            )
-            done = 0
-            while done < steps_per_level:
+            mask = np.zeros(n_anion, dtype=bool)
+            mask[rng.choice(n_anion, size=n_sc**3, replace=False)] = True
+            current = atoms_from_f_mask_stable(n_sc, mask)
+            for t in temps:
                 if stop_event.is_set():
                     return
-                batch = min(harvest_batch, steps_per_level - done)
-                ens.run(batch)
-                done += batch
-                _maybe_emit(ens.structure.numbers)
-            current = ens.structure.copy()
+                ens = CustomCanonicalEnsemble(
+                    structure=current,
+                    calculator=calc,
+                    temperature=t,
+                    moves=moves,
+                    random_seed=int(rng.integers(_SEED_RANGE)),
+                )
+                done = 0
+                while done < steps_per_level:
+                    if stop_event.is_set():
+                        return
+                    batch = min(harvest_batch, steps_per_level - done)
+                    ens.run(batch)
+                    done += batch
+                    _maybe_emit(ens.structure.numbers)
+                current = ens.structure.copy()
+    except Exception:  # report any worker fault to the parent
+        import traceback
+
+        result_queue.put((_WORKER_ERROR, traceback.format_exc()))
 
 
 def _lingering_backstop(
@@ -245,14 +272,16 @@ def find_all_window_configs(
     propose from the production move set ``moves_cfg`` and harvest distinct
     in-window configurations on the way down a geometric temperature
     schedule. The exact ground state is injected once into the lowest
-    window that contains it. Any window still short after a main-process
-    lingering backstop raises ``RuntimeError``.
+    window that contains it. Windows the anneals leave short are topped up
+    by a fixed-temperature lingering backstop (when ``backstop_sweeps >
+    0``); any window still short after that raises ``RuntimeError``.
 
     Returns one list of ``Atoms`` per window, in window order, each inner
     list of length ``counts[i]`` and all configs in that window distinct.
 
     Raises:
-        RuntimeError: if any window cannot be filled to its target count.
+        RuntimeError: if any window cannot be filled to its target count,
+            or if a search worker terminates with an exception.
     """
     from icet import ClusterExpansion
     from mchammer.calculators import ClusterExpansionCalculator
@@ -298,23 +327,36 @@ def find_all_window_configs(
     def _satisfied() -> bool:
         return all(len(found[i]) >= counts[i] for i in range(n_windows))
 
+    worker_error: list[str] = []
+
+    def _handle(item: tuple) -> bool:
+        """Record a queue item, or capture a worker-error sentinel.
+
+        Returns ``True`` once every window has reached its target.
+        """
+        tag, payload = item
+        if tag == _WORKER_ERROR:
+            worker_error.append(payload)
+            return False
+        return _record_config(found, seen, windows, counts, tag, payload)
+
     def _drain() -> None:
-        while True:
+        while not worker_error:
             try:
-                e, nums = result_queue.get_nowait()
+                item = result_queue.get_nowait()
             except queue.Empty:
                 return
-            _record_config(found, seen, windows, counts, e, nums)
+            _handle(item)
 
     satisfied = _satisfied()
-    while not satisfied:
+    while not satisfied and not worker_error:
         try:
-            e, nums = result_queue.get(timeout=0.5)
+            item = result_queue.get(timeout=0.5)
         except queue.Empty:
             if not any(p.is_alive() for p in procs):
                 break
             continue
-        satisfied = _record_config(found, seen, windows, counts, e, nums)
+        satisfied = _handle(item)
 
     # Wind the workers down. Keep draining the queue while they exit: a
     # worker blocked on a full queue cannot observe ``stop_event`` and would
@@ -334,6 +376,12 @@ def find_all_window_configs(
             p.terminate()
             p.join(timeout=5)
     _drain()
+
+    if worker_error:
+        raise RuntimeError(
+            "A search worker terminated with an exception; its traceback "
+            f"follows:\n{worker_error[0]}"
+        )
 
     if not _satisfied() and params.backstop_sweeps > 0:
         sublattice_index = resolve_anion_sublattice_index(calc)
