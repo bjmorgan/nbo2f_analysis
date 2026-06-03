@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import queue
+import time
 from dataclasses import dataclass
+from multiprocessing.queues import Queue as MpQueue
+from multiprocessing.synchronize import Event as MpEvent
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +21,14 @@ from nbo2f_analysis.ce_tools import (
     atoms_from_f_mask_stable,
     build_tiled_groundstate_atoms,
 )
+from nbo2f_analysis.rewl.config import MovesCfg
+
+# Upper bound for per-anneal child seeds; comfortably within the range
+# numpy's random generator accepts.
+_SEED_RANGE = 2**31
+# Grace period (seconds) for search workers to observe the stop signal and
+# exit cleanly before any straggler is terminated.
+_SHUTDOWN_TIMEOUT_S = 15.0
 
 
 @dataclass(frozen=True)
@@ -101,10 +112,10 @@ def _anneal_worker(
     ce_path: str,
     n_sc: int,
     windows: list[tuple[float, float]],
-    moves_cfg,
+    moves_cfg: MovesCfg,
     params: SearchParams,
-    stop_event,
-    result_queue,
+    stop_event: MpEvent,
+    result_queue: MpQueue,
 ) -> None:
     from icet import ClusterExpansion
     from mchammer.calculators import ClusterExpansionCalculator
@@ -157,7 +168,7 @@ def _anneal_worker(
                 calculator=calc,
                 temperature=t,
                 moves=moves,
-                random_seed=int(rng.integers(2**31)),
+                random_seed=int(rng.integers(_SEED_RANGE)),
             )
             done = 0
             while done < steps_per_level:
@@ -180,7 +191,7 @@ def find_all_window_configs(
     n_sc: int,
     windows: list[tuple[float, float]],
     counts: list[int],
-    moves_cfg,
+    moves_cfg: MovesCfg,
     n_workers: int,
     params: SearchParams,
 ) -> list[list[Atoms]]:
@@ -243,28 +254,42 @@ def find_all_window_configs(
     def _satisfied() -> bool:
         return all(len(found[i]) >= counts[i] for i in range(n_windows))
 
-    while not _satisfied():
+    def _drain() -> None:
+        while True:
+            try:
+                e, nums = result_queue.get_nowait()
+            except queue.Empty:
+                return
+            _record_config(found, seen, windows, counts, e, nums)
+
+    satisfied = _satisfied()
+    while not satisfied:
         try:
             e, nums = result_queue.get(timeout=0.5)
-            _record_config(found, seen, windows, counts, e, nums)
         except queue.Empty:
             if not any(p.is_alive() for p in procs):
                 break
+            continue
+        satisfied = _record_config(found, seen, windows, counts, e, nums)
 
+    # Wind the workers down. Keep draining the queue while they exit: a
+    # worker blocked on a full queue cannot observe ``stop_event`` and would
+    # have to be killed mid-``put``, which can corrupt the very queue we
+    # then need to drain. Continuous draining lets each worker reach its
+    # next ``stop_event`` check and exit cleanly; ``terminate`` is only a
+    # last resort for a straggler that overran the deadline.
     stop_event.set()
+    deadline = time.monotonic() + _SHUTDOWN_TIMEOUT_S
+    while any(p.is_alive() for p in procs) and time.monotonic() < deadline:
+        _drain()
+        for p in procs:
+            p.join(timeout=0.1)
+    _drain()
     for p in procs:
-        p.join(timeout=10)
         if p.is_alive():
             p.terminate()
             p.join(timeout=5)
-
-    # Drain anything already queued before falling back to the backstop.
-    while True:
-        try:
-            e, nums = result_queue.get_nowait()
-            _record_config(found, seen, windows, counts, e, nums)
-        except queue.Empty:
-            break
+    _drain()
 
     if not _satisfied() and params.backstop_sweeps > 0:
         sublattice_index = resolve_anion_sublattice_index(calc)
