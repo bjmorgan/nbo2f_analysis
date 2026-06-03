@@ -36,9 +36,14 @@ moves:
 
 config_search:
   n_workers: null                    # null -> min(cpu_count, n_windows)
-  max_swaps: [1, 2, 3, 5, 8, 12, 20, 30, 50, 80, 120, 150, 200, 300]
-  attempts_per_swap_count: 200
-  random_attempts: 10000
+  temperature_high: 3000.0           # K; anneal start (hot, explores broadly)
+  temperature_low: 100.0             # K; anneal end (cold, settles into basins)
+  n_temperature_levels: 12           # geometric schedule length
+  sweeps_per_level: 20               # MC sweeps per temperature level
+  harvest_interval_sweeps: 5         # spacing between harvested samples
+  max_anneals_per_worker: 200        # per-worker budget before giving up
+  backstop_temperature: 300.0        # K; fixed-T lingering top-up
+  backstop_sweeps: 500               # 0 disables the backstop
 
 checkpoint:
   filename: rewl_state.h5
