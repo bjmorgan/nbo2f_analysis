@@ -72,10 +72,12 @@ def _ce_path() -> str:
 
 
 @pytest.mark.slow
-def test_find_all_window_configs_returns_in_window_atoms():
+def test_find_all_window_configs_returns_distinct_in_window_atoms():
     n_sc = 3
     from icet import ClusterExpansion
     from mchammer.calculators import ClusterExpansionCalculator
+
+    from nbo2f_analysis.rewl.config import MovesCfg, MoveSpec
 
     ce = ClusterExpansion.read(_ce_path())
     gs = build_tiled_groundstate_atoms(n_sc=n_sc)
@@ -85,19 +87,38 @@ def test_find_all_window_configs_returns_in_window_atoms():
         (e_gs - 0.5, e_gs + 1.5),
         (e_gs + 0.5, e_gs + 3.0),
     ]
-    params = SearchParams(
-        max_swaps=(1, 2, 3, 5),
-        attempts_per_swap_count=50,
-        random_attempts=100,
+    counts = [2, 1]
+    moves_cfg = MovesCfg(
+        list=(
+            MoveSpec(type="pair_swap", weight=0.2),
+            MoveSpec(type="chain_swap", weight=0.5),
+            MoveSpec(type="row_reflect", weight=0.5),
+        )
     )
-    atoms_list = find_all_window_configs(
+    params = SearchParams(
+        temperature_high=3000.0,
+        temperature_low=100.0,
+        n_temperature_levels=6,
+        sweeps_per_level=4,
+        harvest_interval_sweeps=1,
+        max_anneals_per_worker=40,
+        backstop_temperature=200.0,
+        backstop_sweeps=20,
+    )
+    per_window = find_all_window_configs(
         ce_path=_ce_path(),
         n_sc=n_sc,
         windows=windows,
+        counts=counts,
+        moves_cfg=moves_cfg,
         n_workers=2,
         params=params,
     )
-    assert len(atoms_list) == 2
-    for atoms, (lo, hi) in zip(atoms_list, windows):
-        e = float(calc.calculate_total(occupations=atoms.numbers))
-        assert lo <= e <= hi, f"energy {e} outside [{lo}, {hi}]"
+    assert [len(w) for w in per_window] == counts
+    for atoms_list, (lo, hi) in zip(per_window, windows):
+        keys = set()
+        for atoms in atoms_list:
+            e = float(calc.calculate_total(occupations=atoms.numbers))
+            assert lo <= e <= hi, f"energy {e} outside [{lo}, {hi}]"
+            keys.add(atoms.numbers.tobytes())
+        assert len(keys) == len(atoms_list), "configs within a window not distinct"
