@@ -60,9 +60,9 @@ def _record_config(
 ) -> bool:
     """Record ``numbers`` into each still-short window containing ``e``.
 
-    Dedups per window by occupation-vector bytes and never exceeds a
-    window's target count. Returns ``True`` once every window has reached
-    its target.
+    Mutates ``found`` and ``seen`` in place: dedups per window by
+    occupation-vector bytes and never exceeds a window's target count.
+    Returns ``True`` once every window has reached its target.
     """
     key = numbers.tobytes()
     for i in _windows_containing(e, windows):
@@ -80,7 +80,13 @@ def _inject_ground_state(
     e_gs: float,
     gs_numbers: np.ndarray,
 ) -> None:
-    """Seed the exact ground state into the lowest window that contains it."""
+    """Seed the exact ground state into the lowest window that contains it.
+
+    Mutates ``found`` and ``seen`` in place. No-op if ``e_gs`` lies outside
+    every window: ground-state seeding is a best-effort guarantee, and such
+    a window is left for the anneal/backstop to fill (or the caller's hard
+    error).
+    """
     for i, (lo, hi) in enumerate(windows):
         if lo <= e_gs <= hi:
             key = gs_numbers.tobytes()
