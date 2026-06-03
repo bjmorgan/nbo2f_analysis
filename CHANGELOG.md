@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Per-walker starting structures: multiwalker REWL windows are now
+  seeded with distinct, decorrelated configurations (one per walker)
+  rather than replicating a single structure across the window.
+
+### Changed
+
+- The starting-configuration search is now a parallel simulated anneal
+  driven by the production move set (Metropolis on the cluster-expansion
+  energy), replacing the blind O/F-swap sampler. Each anneal harvests
+  distinct in-window configurations on the way down a geometric
+  temperature schedule; a fixed-temperature lingering backstop tops up
+  any window the anneals leave short, and the ground state is seeded once
+  into the lowest window.
+- BREAKING: the ``config_search`` YAML section changed. The blind-sampler
+  knobs (``max_swaps``, ``attempts_per_swap_count``, ``random_attempts``)
+  are replaced by annealing knobs (``temperature_high``,
+  ``temperature_low``, ``n_temperature_levels``, ``sweeps_per_level``,
+  ``harvest_interval_sweeps``, ``max_anneals_per_worker``,
+  ``backstop_temperature``, ``backstop_sweeps``). Existing config files
+  must be updated; see the bundled example configs under
+  ``nbo2f_analysis/rewl/configs/``.
+
 ## [0.2.0] - 2026-06-01
 
 ### Added
