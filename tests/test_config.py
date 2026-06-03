@@ -178,6 +178,66 @@ def test_load_yaml_rejects_zero_temperature_levels(tmp_path):
         load_yaml(p)
 
 
+def test_load_yaml_rejects_zero_sweeps_per_level(tmp_path):
+    p = _cfg_with(
+        tmp_path,
+        "config_search: {n_workers: 1, temperature_high: 2000.0, "
+        "temperature_low: 100.0, n_temperature_levels: 4, sweeps_per_level: 0, "
+        "harvest_interval_sweeps: 1, max_anneals_per_worker: 4, "
+        "backstop_temperature: 150.0, backstop_sweeps: 2}",
+    )
+    with pytest.raises(ValueError, match="sweeps_per_level must be >= 1"):
+        load_yaml(p)
+
+
+def test_load_yaml_rejects_zero_harvest_interval(tmp_path):
+    p = _cfg_with(
+        tmp_path,
+        "config_search: {n_workers: 1, temperature_high: 2000.0, "
+        "temperature_low: 100.0, n_temperature_levels: 4, sweeps_per_level: 2, "
+        "harvest_interval_sweeps: 0, max_anneals_per_worker: 4, "
+        "backstop_temperature: 150.0, backstop_sweeps: 2}",
+    )
+    with pytest.raises(ValueError, match="harvest_interval_sweeps must be >= 1"):
+        load_yaml(p)
+
+
+def test_load_yaml_rejects_zero_max_anneals_per_worker(tmp_path):
+    p = _cfg_with(
+        tmp_path,
+        "config_search: {n_workers: 1, temperature_high: 2000.0, "
+        "temperature_low: 100.0, n_temperature_levels: 4, sweeps_per_level: 2, "
+        "harvest_interval_sweeps: 1, max_anneals_per_worker: 0, "
+        "backstop_temperature: 150.0, backstop_sweeps: 2}",
+    )
+    with pytest.raises(ValueError, match="max_anneals_per_worker must be >= 1"):
+        load_yaml(p)
+
+
+def test_load_yaml_rejects_zero_backstop_temperature(tmp_path):
+    p = _cfg_with(
+        tmp_path,
+        "config_search: {n_workers: 1, temperature_high: 2000.0, "
+        "temperature_low: 100.0, n_temperature_levels: 4, sweeps_per_level: 2, "
+        "harvest_interval_sweeps: 1, max_anneals_per_worker: 4, "
+        "backstop_temperature: 0.0, backstop_sweeps: 2}",
+    )
+    with pytest.raises(ValueError, match="backstop_temperature must be > 0"):
+        load_yaml(p)
+
+
+def test_load_yaml_rejects_negative_backstop_sweeps(tmp_path):
+    p = _cfg_with(
+        tmp_path,
+        "config_search: {n_workers: 1, temperature_high: 2000.0, "
+        "temperature_low: 100.0, n_temperature_levels: 4, sweeps_per_level: 2, "
+        "harvest_interval_sweeps: 1, max_anneals_per_worker: 4, "
+        "backstop_temperature: 150.0, backstop_sweeps: -1}",
+    )
+    with pytest.raises(ValueError, match="backstop_sweeps must be >= 0"):
+        load_yaml(p)
+
+
 def test_resolve_ce_path_raises_when_both_none():
     from dataclasses import replace
     from nbo2f_analysis.rewl.config import resolve_ce_path
