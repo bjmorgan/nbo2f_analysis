@@ -22,10 +22,72 @@ from nbo2f_analysis.ce_tools import (
 
 @dataclass(frozen=True)
 class SearchParams:
-    """Knobs for the per-window starting-config search."""
-    max_swaps: tuple[int, ...]
-    attempts_per_swap_count: int
-    random_attempts: int
+    """Knobs for the annealing starting-config search."""
+    temperature_high: float
+    temperature_low: float
+    n_temperature_levels: int
+    sweeps_per_level: int
+    harvest_interval_sweeps: int
+    max_anneals_per_worker: int
+    backstop_temperature: float
+    backstop_sweeps: int
+
+
+def _geometric_schedule(
+    t_high: float, t_low: float, n_levels: int
+) -> list[float]:
+    """Geometric temperatures from ``t_high`` down to ``t_low`` inclusive."""
+    if n_levels == 1:
+        return [t_high]
+    ratio = (t_low / t_high) ** (1.0 / (n_levels - 1))
+    return [t_high * ratio**k for k in range(n_levels)]
+
+
+def _windows_containing(
+    e: float, windows: list[tuple[float, float]]
+) -> list[int]:
+    """Indices of every window whose band contains energy ``e``."""
+    return [i for i, (lo, hi) in enumerate(windows) if lo <= e <= hi]
+
+
+def _record_config(
+    found: list[list[np.ndarray]],
+    seen: list[set[bytes]],
+    windows: list[tuple[float, float]],
+    counts: list[int],
+    e: float,
+    numbers: np.ndarray,
+) -> bool:
+    """Record ``numbers`` into each still-short window containing ``e``.
+
+    Dedups per window by occupation-vector bytes and never exceeds a
+    window's target count. Returns ``True`` once every window has reached
+    its target.
+    """
+    key = numbers.tobytes()
+    for i in _windows_containing(e, windows):
+        if len(found[i]) < counts[i] and key not in seen[i]:
+            seen[i].add(key)
+            found[i].append(numbers.copy())
+    return all(len(found[i]) >= counts[i] for i in range(len(counts)))
+
+
+def _inject_ground_state(
+    found: list[list[np.ndarray]],
+    seen: list[set[bytes]],
+    windows: list[tuple[float, float]],
+    counts: list[int],
+    e_gs: float,
+    gs_numbers: np.ndarray,
+) -> None:
+    """Seed the exact ground state into the lowest window that contains it."""
+    for i, (lo, hi) in enumerate(windows):
+        if lo <= e_gs <= hi:
+            key = gs_numbers.tobytes()
+            if len(found[i]) < counts[i] and key not in seen[i]:
+                seen[i].add(key)
+                found[i].append(gs_numbers.copy())
+            return
 
 
 def _worker(
