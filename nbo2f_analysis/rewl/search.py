@@ -341,7 +341,11 @@ def find_all_window_configs(
         return _record_config(found, seen, windows, counts, tag, payload)
 
     def _drain() -> None:
-        while not worker_error:
+        # Keep draining even after a worker fault: emptying the queue lets
+        # healthy stragglers flush their feeder threads and exit promptly
+        # (rather than blocking to the shutdown deadline). Any results
+        # recorded here are discarded when we re-raise the worker error.
+        while True:
             try:
                 item = result_queue.get_nowait()
             except queue.Empty:
