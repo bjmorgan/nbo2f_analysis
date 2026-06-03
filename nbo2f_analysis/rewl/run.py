@@ -116,6 +116,7 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
         moves_cfg=cfg.moves,
         n_workers=n_workers,
         params=search_params,
+        seed=cfg.random_seed,
     )
 
     print("Constructing WangLandauParallelTempering (process pool)...")

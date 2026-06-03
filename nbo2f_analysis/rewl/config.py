@@ -268,6 +268,11 @@ def load_yaml(path: str | Path) -> RewlConfig:
         backstop_temperature=float(cs_raw["backstop_temperature"]),
         backstop_sweeps=int(cs_raw["backstop_sweeps"]),
     )
+    if cs.n_workers is not None and cs.n_workers < 1:
+        raise ValueError(
+            f"config_search.n_workers must be >= 1 when set, "
+            f"got {cs.n_workers}"
+        )
     if not (cs.temperature_high > cs.temperature_low > 0):
         raise ValueError(
             f"config_search: require temperature_high > temperature_low > 0, "

@@ -217,6 +217,7 @@ def _lingering_backstop(
     calc,
     moves,
     params: SearchParams,
+    seed: int,
 ) -> None:
     """Top up still-short windows by lingering near their band.
 
@@ -224,10 +225,12 @@ def _lingering_backstop(
     runs a fixed-temperature canonical walk (production moves, Metropolis
     on the real CE energy) seeded from one of its found configs, harvesting
     further distinct in-window configs. Windows with no anchor are left for
-    the caller's hard error. Mutates ``found`` and ``seen`` in place.
+    the caller's hard error. Per-window walk seeds derive from ``seed``.
+    Mutates ``found`` and ``seen`` in place.
     """
     from mchammer_moves import CustomCanonicalEnsemble
 
+    rng = np.random.default_rng(seed)
     n_atoms = len(atoms_gs)
     total_steps = params.backstop_sweeps * n_atoms
     harvest_batch = params.harvest_interval_sweeps * n_atoms
@@ -242,7 +245,7 @@ def _lingering_backstop(
             calculator=calc,
             temperature=params.backstop_temperature,
             moves=moves,
-            random_seed=i + 1,  # fixed, reproducible per-window backstop seed
+            random_seed=int(rng.integers(_SEED_RANGE)),
         )
         done = 0
         while done < total_steps and len(found[i]) < counts[i]:
@@ -265,6 +268,7 @@ def find_all_window_configs(
     moves_cfg: MovesCfg,
     n_workers: int,
     params: SearchParams,
+    seed: int,
 ) -> list[list[Atoms]]:
     """Find ``counts[i]`` distinct in-window configs per window by annealing.
 
@@ -275,6 +279,10 @@ def find_all_window_configs(
     window that contains it. Windows the anneals leave short are topped up
     by a fixed-temperature lingering backstop (when ``backstop_sweeps >
     0``); any window still short after that raises ``RuntimeError``.
+
+    All search randomness (per-worker anneal streams and the backstop)
+    derives from ``seed``, so the run's ``random_seed`` controls the
+    starting-config search as well as the production run.
 
     Returns one list of ``Atoms`` per window, in window order, each inner
     list of length ``counts[i]`` and all configs in that window distinct.
@@ -304,11 +312,16 @@ def find_all_window_configs(
     ctx = mp.get_context("spawn")
     stop_event = ctx.Event()
     result_queue = ctx.Queue()
+    # Derive independent worker streams (plus one for the backstop) from the
+    # run's seed, so ``random_seed`` controls the starting-config search too.
+    children = np.random.SeedSequence(seed).spawn(n_workers + 1)
+    worker_seeds = [int(c.generate_state(1)[0]) for c in children[:n_workers]]
+    backstop_seed = int(children[n_workers].generate_state(1)[0])
     procs = [
         ctx.Process(
             target=_anneal_worker,
             args=(
-                seed,
+                worker_seeds[k],
                 str(ce_path),
                 n_sc,
                 list(windows),
@@ -318,7 +331,7 @@ def find_all_window_configs(
                 result_queue,
             ),
         )
-        for seed in range(n_workers)
+        for k in range(n_workers)
     ]
     print(f"  launching {n_workers} annealing search processes (spawn)...")
     for p in procs:
@@ -391,7 +404,8 @@ def find_all_window_configs(
         sublattice_index = resolve_anion_sublattice_index(calc)
         moves = build_moves(n_sc, sublattice_index, moves_cfg)
         _lingering_backstop(
-            found, seen, windows, counts, atoms_gs, calc, moves, params
+            found, seen, windows, counts, atoms_gs, calc, moves, params,
+            backstop_seed,
         )
 
     missing = [

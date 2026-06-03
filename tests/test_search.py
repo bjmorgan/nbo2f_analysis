@@ -126,6 +126,7 @@ def test_find_all_window_configs_returns_distinct_in_window_atoms():
         moves_cfg=moves_cfg,
         n_workers=2,
         params=params,
+        seed=0,
     )
     assert [len(w) for w in per_window] == counts
     for atoms_list, (lo, hi) in zip(per_window, windows):
@@ -177,7 +178,9 @@ def test_lingering_backstop_tops_up_a_short_window():
         backstop_temperature=400.0,
         backstop_sweeps=200,
     )
-    _lingering_backstop(found, seen, windows, counts, gs, calc, moves, params)
+    _lingering_backstop(
+        found, seen, windows, counts, gs, calc, moves, params, seed=0
+    )
     assert len(found[0]) == 3
     keys = {n.tobytes() for n in found[0]}
     assert len(keys) == 3
@@ -221,4 +224,5 @@ def test_find_all_window_configs_raises_when_window_unfillable():
             moves_cfg=moves_cfg,
             n_workers=1,
             params=params,
+            seed=0,
         )
