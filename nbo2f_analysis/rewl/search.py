@@ -215,7 +215,7 @@ def _lingering_backstop(
             calculator=calc,
             temperature=params.backstop_temperature,
             moves=moves,
-            random_seed=i + 1,
+            random_seed=i + 1,  # fixed, reproducible per-window backstop seed
         )
         done = 0
         while done < total_steps and len(found[i]) < counts[i]:

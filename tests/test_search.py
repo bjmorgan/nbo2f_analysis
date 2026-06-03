@@ -198,7 +198,7 @@ def test_find_all_window_configs_raises_when_window_unfillable():
         harvest_interval_sweeps=1,
         max_anneals_per_worker=1,
         backstop_temperature=200.0,
-        backstop_sweeps=0,
+        backstop_sweeps=0,  # disable the backstop: isolate the hard-error path
     )
     with pytest.raises(RuntimeError, match="Could not fill windows"):
         find_all_window_configs(
