@@ -17,7 +17,7 @@ dependencies = [
     "ase",
     "bsym",
     "icet @ git+https://gitlab.com/bjmorgan/icet.git@master",
-    "mchammer-pt @ git+https://github.com/bjmorgan/mchammer-pt.git@v0.17.0",
+    "mchammer-pt @ git+https://github.com/bjmorgan/mchammer-pt.git@main",
     "mchammer-moves @ git+https://github.com/bjmorgan/mchammer-moves.git",
     "chainorder @ git+https://github.com/bjmorgan/chainorder.git",
 ]

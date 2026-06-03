@@ -30,10 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``backstop_temperature``, ``backstop_sweeps``). Existing config files
   must be updated; see the bundled example configs under
   ``nbo2f_analysis/rewl/configs/``.
-- Requires ``mchammer-pt`` 0.17.0 or newer (pinned to the ``v0.17.0``
-  tag), which adds the per-window single-or-sequence ``atoms`` argument
-  to ``WangLandauParallelTempering.process_pool`` that per-walker
-  seeding relies on.
+- Requires ``mchammer-pt`` 0.17.0 or newer, which adds the per-window
+  single-or-sequence ``atoms`` argument to
+  ``WangLandauParallelTempering.process_pool`` that per-walker seeding
+  relies on. The git dependency tracks ``main``; ensure the installed
+  ``mchammer-pt`` is at least 0.17.0.
 
 ## [0.2.0] - 2026-06-01
 
