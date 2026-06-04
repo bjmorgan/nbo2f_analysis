@@ -1,21 +1,17 @@
-"""Parallel per-window starting-configuration search.
+"""Per-window starting-configuration search.
 
-Uses ``multiprocessing`` with the ``spawn`` context because icet's
-C++ extensions crash under ``fork`` on macOS. Each worker loads the
-cluster expansion independently from disk.
+A thin adapter over ``mchammer_pt.seed_window_configs`` (the generic,
+material-agnostic window-seeding search). This module supplies the three
+NbO2F-specific contracts the generic search needs -- the ground-state
+anchor, a correct-composition random fill, and the production move set --
+and forwards everything else unchanged.
 """
 from __future__ import annotations
 
-import multiprocessing as mp
-import queue
-import time
-from dataclasses import dataclass
-from multiprocessing.queues import Queue as MpQueue
-from multiprocessing.synchronize import Event as MpEvent
-from pathlib import Path
-
 import numpy as np
 from ase import Atoms
+from icet import ClusterExpansion
+from mchammer_pt import SeedSearchParams, seed_window_configs
 
 from nbo2f_analysis.ce_tools import (
     atoms_from_f_mask_stable,
@@ -23,301 +19,50 @@ from nbo2f_analysis.ce_tools import (
 )
 from nbo2f_analysis.rewl.config import MovesCfg
 
-# Upper bound for per-anneal child seeds; comfortably within the range
-# numpy's random generator accepts.
-_SEED_RANGE = 2**31
-# Grace period (seconds) for search workers to observe the stop signal and
-# exit cleanly before any straggler is terminated.
-_SHUTDOWN_TIMEOUT_S = 15.0
-# Sentinel a worker puts on the result queue to report an uncaught
-# exception, so the parent re-raises it rather than misreporting the fault
-# as an unfillable window.
-_WORKER_ERROR = "__worker_error__"
-# How often (seconds) the parent prints a search progress heartbeat while
-# waiting for windows to fill.
-_HEARTBEAT_INTERVAL_S = 30.0
-
-
-@dataclass(frozen=True)
-class SearchParams:
-    """Knobs for the annealing starting-config search."""
-    temperature_high: float
-    temperature_low: float
-    n_temperature_levels: int
-    sweeps_per_level: int
-    harvest_interval_sweeps: int
-    max_anneals_per_worker: int
-    backstop_temperature: float
-    backstop_sweeps: int
-
-
-def _geometric_schedule(
-    t_high: float, t_low: float, n_levels: int
-) -> list[float]:
-    """Geometric temperatures from ``t_high`` down to ``t_low`` inclusive.
-
-    ``n_levels == 1`` is a degenerate single-temperature schedule: it
-    returns ``[t_high]`` only, with no cooling.
-    """
-    if n_levels == 1:
-        return [t_high]
-    ratio = (t_low / t_high) ** (1.0 / (n_levels - 1))
-    return [t_high * ratio**k for k in range(n_levels)]
-
-
-def _windows_containing(
-    e: float, windows: list[tuple[float, float]]
-) -> list[int]:
-    """Indices of every window whose band contains energy ``e``."""
-    return [i for i, (lo, hi) in enumerate(windows) if lo <= e <= hi]
-
-
-def _fill_status(
-    found: list[list[np.ndarray]], counts: list[int]
-) -> tuple[int, dict[int, str]]:
-    """Summarise per-window search progress.
-
-    Returns ``(n_filled, short)`` where ``n_filled`` is the number of
-    windows that have reached their target and ``short`` maps each
-    still-short window index to a ``"found/target"`` string.
-    """
-    n_filled = sum(
-        1 for i in range(len(counts)) if len(found[i]) >= counts[i]
-    )
-    short = {
-        i: f"{len(found[i])}/{counts[i]}"
-        for i in range(len(counts))
-        if len(found[i]) < counts[i]
-    }
-    return n_filled, short
-
-
-def _record_config(
-    found: list[list[np.ndarray]],
-    seen: list[set[bytes]],
-    windows: list[tuple[float, float]],
-    counts: list[int],
-    e: float,
-    numbers: np.ndarray,
-) -> list[int]:
-    """Record ``numbers`` into each still-short window containing ``e``.
-
-    Mutates ``found`` and ``seen`` in place: dedups per window by
-    occupation-vector bytes and never exceeds a window's target count.
-    Returns the indices of the windows it appended to (empty if the
-    config was a duplicate or every containing window was already full).
-    """
-    key = numbers.tobytes()
-    appended: list[int] = []
-    for i in _windows_containing(e, windows):
-        if len(found[i]) < counts[i] and key not in seen[i]:
-            seen[i].add(key)
-            found[i].append(numbers.copy())
-            appended.append(i)
-    return appended
-
-
-def _inject_ground_state(
-    found: list[list[np.ndarray]],
-    seen: list[set[bytes]],
-    windows: list[tuple[float, float]],
-    counts: list[int],
-    e_gs: float,
-    gs_numbers: np.ndarray,
-) -> None:
-    """Seed the exact ground state into the lowest window that contains it.
-
-    Mutates ``found`` and ``seen`` in place. No-op if ``e_gs`` lies outside
-    every window: ground-state seeding is a best-effort guarantee, and such
-    a window is left for the anneal/backstop to fill (or the caller's hard
-    error).
-    """
-    for i, (lo, hi) in enumerate(windows):
-        if lo <= e_gs <= hi:
-            key = gs_numbers.tobytes()
-            if len(found[i]) < counts[i] and key not in seen[i]:
-                seen[i].add(key)
-                found[i].append(gs_numbers.copy())
-            return
-
-
-def _anneal_worker(
-    seed: int,
-    ce_path: str,
-    n_sc: int,
-    windows: list[tuple[float, float]],
-    moves_cfg: MovesCfg,
-    params: SearchParams,
-    stop_event: MpEvent,
-    result_queue: MpQueue,
-) -> None:
-    """Run independent anneals, emitting distinct in-window configs.
-
-    A spawn-process target. Builds the calculator and production move set
-    once, then repeatedly anneals from a fresh random fill down the
-    temperature schedule, putting each novel in-window occupation vector on
-    ``result_queue`` as ``(energy, numbers)``. Returns early whenever
-    ``stop_event`` is set.
-
-    Any exception is reported to the parent as a ``(_WORKER_ERROR,
-    traceback)`` sentinel rather than dying quietly and being misread as an
-    unfillable window. A hard C++ crash that kills the process outright
-    cannot be caught here; the parent still detects that via its
-    dead-worker check.
-    """
-    try:
-        from icet import ClusterExpansion
-        from mchammer.calculators import ClusterExpansionCalculator
-        from mchammer_moves import CustomCanonicalEnsemble
-
-        from nbo2f_analysis.rewl.nbo2f import (
-            build_moves,
-            resolve_anion_sublattice_index,
-        )
-
-        ce = ClusterExpansion.read(ce_path)
-        atoms_gs = build_tiled_groundstate_atoms(n_sc=n_sc)
-        n_atoms = len(atoms_gs)
-        calc = ClusterExpansionCalculator(atoms_gs.copy(), ce)
-        sublattice_index = resolve_anion_sublattice_index(calc)
-        moves = build_moves(n_sc, sublattice_index, moves_cfg)
-
-        rng = np.random.default_rng(seed)
-        temps = _geometric_schedule(
-            params.temperature_high,
-            params.temperature_low,
-            params.n_temperature_levels,
-        )
-        n_anion = 3 * n_sc**3
-        steps_per_level = params.sweeps_per_level * n_atoms
-        harvest_batch = params.harvest_interval_sweeps * n_atoms
-        emitted: set[bytes] = set()
-
-        def _maybe_emit(numbers: np.ndarray) -> None:
-            e = float(calc.calculate_total(occupations=numbers))
-            if not _windows_containing(e, windows):
-                return
-            key = numbers.tobytes()
-            if key in emitted:
-                return
-            emitted.add(key)
-            result_queue.put((e, numbers.copy()))
-
-        for _ in range(params.max_anneals_per_worker):
-            if stop_event.is_set():
-                return
-            mask = np.zeros(n_anion, dtype=bool)
-            mask[rng.choice(n_anion, size=n_sc**3, replace=False)] = True
-            current = atoms_from_f_mask_stable(n_sc, mask)
-            for t in temps:
-                if stop_event.is_set():
-                    return
-                ens = CustomCanonicalEnsemble(
-                    structure=current,
-                    calculator=calc,
-                    temperature=t,
-                    moves=moves,
-                    random_seed=int(rng.integers(_SEED_RANGE)),
-                )
-                done = 0
-                while done < steps_per_level:
-                    if stop_event.is_set():
-                        return
-                    batch = min(harvest_batch, steps_per_level - done)
-                    ens.run(batch)
-                    done += batch
-                    _maybe_emit(ens.structure.numbers)
-                current = ens.structure.copy()
-    except Exception:  # report any worker fault to the parent
-        import traceback
-
-        result_queue.put((_WORKER_ERROR, traceback.format_exc()))
-
-
-def _lingering_backstop(
-    found: list[list[np.ndarray]],
-    seen: list[set[bytes]],
-    windows: list[tuple[float, float]],
-    counts: list[int],
-    atoms_gs: Atoms,
-    calc,
-    moves,
-    params: SearchParams,
-    seed: int,
-) -> None:
-    """Top up still-short windows by lingering near their band.
-
-    For each window with an anchor but fewer than ``counts[i]`` configs,
-    runs a fixed-temperature canonical walk (production moves, Metropolis
-    on the real CE energy) seeded from one of its found configs, harvesting
-    further distinct in-window configs. Windows with no anchor are left for
-    the caller's hard error. Per-window walk seeds derive from ``seed``.
-    Mutates ``found`` and ``seen`` in place.
-    """
-    from mchammer_moves import CustomCanonicalEnsemble
-
-    rng = np.random.default_rng(seed)
-    n_atoms = len(atoms_gs)
-    total_steps = params.backstop_sweeps * n_atoms
-    harvest_batch = params.harvest_interval_sweeps * n_atoms
-
-    for i, (lo, hi) in enumerate(windows):
-        if len(found[i]) >= counts[i] or not found[i]:
-            continue
-        anchor = atoms_gs.copy()
-        anchor.numbers = found[i][0]
-        ens = CustomCanonicalEnsemble(
-            structure=anchor,
-            calculator=calc,
-            temperature=params.backstop_temperature,
-            moves=moves,
-            random_seed=int(rng.integers(_SEED_RANGE)),
-        )
-        done = 0
-        while done < total_steps and len(found[i]) < counts[i]:
-            batch = min(harvest_batch, total_steps - done)
-            ens.run(batch)
-            done += batch
-            numbers = ens.structure.numbers
-            e = float(calc.calculate_total(occupations=numbers))
-            key = numbers.tobytes()
-            if lo <= e <= hi and key not in seen[i]:
-                seen[i].add(key)
-                found[i].append(numbers.copy())
-
 
 def find_all_window_configs(
-    ce_path: str | Path,
+    ce: ClusterExpansion,
     n_sc: int,
     windows: list[tuple[float, float]],
     counts: list[int],
+    energy_spacing: float,
     moves_cfg: MovesCfg,
-    n_workers: int,
-    params: SearchParams,
+    params: SeedSearchParams,
     seed: int,
 ) -> list[list[Atoms]]:
-    """Find ``counts[i]`` distinct in-window configs per window by annealing.
+    """Find ``counts[i]`` distinct in-window configs per window.
 
-    Runs ``n_workers`` independent simulated anneals (spawn processes) that
-    propose from the production move set ``moves_cfg`` and harvest distinct
-    in-window configurations on the way down a geometric temperature
-    schedule. The exact ground state is injected once into the lowest
-    window that contains it. Windows the anneals leave short are topped up
-    by a fixed-temperature lingering backstop (when ``backstop_sweeps >
-    0``); any window still short after that raises ``RuntimeError``.
+    Builds the three NbO2F-specific contracts and delegates the search to
+    ``mchammer_pt.seed_window_configs``:
 
-    All search randomness (per-worker anneal streams and the backstop)
-    derives from ``seed``, so the run's ``random_seed`` controls the
-    starting-config search as well as the production run.
+    - ``bottom_anchor`` -- the tiled ground state, from which lower windows
+      climb up into their band;
+    - ``random_fill`` -- a fresh, correct-composition, disordered structure
+      on the *same* stable lattice as the anchor (mandatory: the library
+      binds one calculator to the anchor and reuses it for every walk), from
+      which upper windows settle down into their band;
+    - ``moves`` -- the production move set described by ``moves_cfg``.
 
-    Returns one list of ``Atoms`` per window, in window order, each inner
-    list of length ``counts[i]`` and all configs in that window distinct.
+    Determinism flows from ``seed``. Ground-state injection, per-window
+    dedup, and the unfillable-window hard error are handled upstream.
+
+    Args:
+        ce: the trained cluster expansion (object, not a path).
+        n_sc: supercell side in primitive cells.
+        windows: per-window ``(lo, hi)`` energy bands, in window order.
+        counts: number of distinct configs wanted per window (walker count).
+        energy_spacing: Wang-Landau energy-grid bin size.
+        moves_cfg: the production move-set specification.
+        params: seed-search tuning knobs.
+        seed: master random seed; all per-walk seeds derive from it.
+
+    Returns:
+        One list of ``Atoms`` per window, in window order, each inner list
+        of length ``counts[i]`` and all configs in that window distinct.
 
     Raises:
-        RuntimeError: if any window cannot be filled to its target count,
-            or if a search worker terminates with an exception.
+        RuntimeError: (from the library) if a window cannot be filled.
     """
-    from icet import ClusterExpansion
     from mchammer.calculators import ClusterExpansionCalculator
 
     from nbo2f_analysis.rewl.nbo2f import (
@@ -325,166 +70,29 @@ def find_all_window_configs(
         resolve_anion_sublattice_index,
     )
 
-    n_windows = len(windows)
-    found: list[list[np.ndarray]] = [[] for _ in range(n_windows)]
-    seen: list[set[bytes]] = [set() for _ in range(n_windows)]
+    bottom_anchor = build_tiled_groundstate_atoms(n_sc=n_sc)
+    calc = ClusterExpansionCalculator(bottom_anchor.copy(), ce)
+    sublattice_index = resolve_anion_sublattice_index(calc)
+    moves = build_moves(n_sc, sublattice_index, moves_cfg)
 
-    atoms_gs = build_tiled_groundstate_atoms(n_sc=n_sc)
-    ce = ClusterExpansion.read(str(ce_path))
-    calc = ClusterExpansionCalculator(atoms_gs.copy(), ce)
-    e_gs = float(calc.calculate_total(occupations=atoms_gs.numbers))
-    _inject_ground_state(found, seen, windows, counts, e_gs, atoms_gs.numbers)
+    n_anion = 3 * n_sc**3
+    n_f = n_sc**3
 
-    ctx = mp.get_context("spawn")
-    stop_event = ctx.Event()
-    result_queue = ctx.Queue()
-    # Derive independent worker streams (plus one for the backstop) from the
-    # run's seed, so ``random_seed`` controls the starting-config search too.
-    children = np.random.SeedSequence(seed).spawn(n_workers + 1)
-    worker_seeds = [int(c.generate_state(1)[0]) for c in children[:n_workers]]
-    backstop_seed = int(children[n_workers].generate_state(1)[0])
-    procs = [
-        ctx.Process(
-            target=_anneal_worker,
-            args=(
-                worker_seeds[k],
-                str(ce_path),
-                n_sc,
-                list(windows),
-                moves_cfg,
-                params,
-                stop_event,
-                result_queue,
-            ),
-        )
-        for k in range(n_workers)
-    ]
-    print(f"  launching {n_workers} annealing search processes (spawn)...")
-    for p in procs:
-        p.start()
+    def random_fill(fill_seed: int) -> Atoms:
+        """Fresh disordered NbO2F config on the anchor's stable lattice."""
+        rng = np.random.default_rng(fill_seed)
+        mask = np.zeros(n_anion, dtype=bool)
+        mask[rng.choice(n_anion, size=n_f, replace=False)] = True
+        return atoms_from_f_mask_stable(n_sc, mask)
 
-    def _satisfied() -> bool:
-        return all(len(found[i]) >= counts[i] for i in range(n_windows))
-
-    worker_error: list[str] = []
-
-    def _handle(item: tuple) -> list[int]:
-        """Record a queue item, or capture a worker-error sentinel.
-
-        Returns the window indices a recorded config was appended to
-        (empty for a duplicate, a full window, or a worker-error sentinel).
-        """
-        tag, payload = item
-        if tag == _WORKER_ERROR:
-            worker_error.append(payload)
-            return []
-        return _record_config(found, seen, windows, counts, tag, payload)
-
-    def _drain() -> None:
-        # Keep draining even after a worker fault: emptying the queue lets
-        # healthy stragglers flush their feeder threads and exit promptly
-        # (rather than blocking to the shutdown deadline). Any results
-        # recorded here are discarded when we re-raise the worker error.
-        while True:
-            try:
-                item = result_queue.get_nowait()
-            except queue.Empty:
-                return
-            _handle(item)
-
-    t_start = time.monotonic()
-    next_heartbeat = t_start + _HEARTBEAT_INTERVAL_S
-    while not _satisfied() and not worker_error:
-        now = time.monotonic()
-        if now >= next_heartbeat:
-            n_filled, short = _fill_status(found, counts)
-            print(
-                f"  [search] {now - t_start:.0f}s elapsed, "
-                f"{n_filled}/{n_windows} windows filled; still short: {short}",
-                flush=True,
-            )
-            # Reset relative to ``now`` (not ``+= interval``) so a stall longer
-            # than the interval doesn't emit a burst of catch-up heartbeats.
-            next_heartbeat = now + _HEARTBEAT_INTERVAL_S
-        try:
-            item = result_queue.get(timeout=0.5)
-        except queue.Empty:
-            if not any(p.is_alive() for p in procs):
-                break
-            continue
-        for i in _handle(item):
-            if len(found[i]) >= counts[i]:
-                n_filled = _fill_status(found, counts)[0]
-                print(
-                    f"  window {i}: {counts[i]}/{counts[i]} complete "
-                    f"({n_filled}/{n_windows} windows filled)",
-                    flush=True,
-                )
-            else:
-                print(
-                    f"  window {i}: {len(found[i])}/{counts[i]}", flush=True
-                )
-
-    # Wind the workers down. Keep draining the queue while they exit: a
-    # worker blocked on a full queue cannot observe ``stop_event`` and would
-    # have to be killed mid-``put``, which can corrupt the very queue we
-    # then need to drain. Continuous draining lets each worker reach its
-    # next ``stop_event`` check and exit cleanly; ``terminate`` is only a
-    # last resort for a straggler that overran the deadline.
-    stop_event.set()
-    deadline = time.monotonic() + _SHUTDOWN_TIMEOUT_S
-    while any(p.is_alive() for p in procs) and time.monotonic() < deadline:
-        _drain()
-        for p in procs:
-            p.join(timeout=0.1)
-    _drain()
-    for p in procs:
-        if p.is_alive():
-            p.terminate()
-            p.join(timeout=5)
-    _drain()
-
-    if worker_error:
-        raise RuntimeError(
-            "A search worker terminated with an exception; its traceback "
-            f"follows:\n{worker_error[0]}"
-        )
-
-    if not _satisfied() and params.backstop_sweeps > 0:
-        _, short = _fill_status(found, counts)
-        print(
-            f"  anneals left {len(short)} window(s) short {short}; "
-            f"running lingering backstop...",
-            flush=True,
-        )
-        sublattice_index = resolve_anion_sublattice_index(calc)
-        moves = build_moves(n_sc, sublattice_index, moves_cfg)
-        _lingering_backstop(
-            found, seen, windows, counts, atoms_gs, calc, moves, params,
-            backstop_seed,
-        )
-
-    missing = [
-        (i, len(found[i]), counts[i])
-        for i in range(n_windows)
-        if len(found[i]) < counts[i]
-    ]
-    if missing:
-        raise RuntimeError(
-            f"Could not fill windows (index, found, target): {missing}"
-        )
-
-    out: list[list[Atoms]] = []
-    for i in range(n_windows):
-        per_window: list[Atoms] = []
-        for numbers in found[i][:counts[i]]:
-            atoms = atoms_gs.copy()
-            atoms.numbers = numbers
-            per_window.append(atoms)
-        out.append(per_window)
-    print(
-        f"  [search] complete: all {n_windows} windows filled in "
-        f"{time.monotonic() - t_start:.0f}s",
-        flush=True,
+    return seed_window_configs(
+        ce,
+        moves,
+        list(windows),
+        list(counts),
+        energy_spacing,
+        bottom_anchor,
+        random_fill,
+        random_seed=seed,
+        params=params,
     )
-    return out
