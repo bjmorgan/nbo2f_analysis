@@ -53,12 +53,12 @@ def test_record_config_dedups_and_caps_per_window():
     seen = [set(), set()]
     a = np.array([1, 2, 3], dtype=np.int64)
     b = np.array([4, 5, 6], dtype=np.int64)
-    # -8.5 is in both windows; fills window 1 (cap 1) and one slot of window 0.
-    assert _record_config(found, seen, windows, counts, -8.5, a) is False
-    # Identical vector is deduped everywhere.
-    assert _record_config(found, seen, windows, counts, -8.5, a) is False
+    # -8.5 is in both windows; appended to window 0 and window 1.
+    assert _record_config(found, seen, windows, counts, -8.5, a) == [0, 1]
+    # Identical vector is deduped everywhere: nothing appended.
+    assert _record_config(found, seen, windows, counts, -8.5, a) == []
     # A distinct vector fills window 0's second slot; window 1 already capped.
-    assert _record_config(found, seen, windows, counts, -8.5, b) is True
+    assert _record_config(found, seen, windows, counts, -8.5, b) == [0]
     assert len(found[0]) == 2
     assert len(found[1]) == 1
 

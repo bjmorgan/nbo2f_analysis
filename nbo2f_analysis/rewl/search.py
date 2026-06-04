@@ -99,19 +99,22 @@ def _record_config(
     counts: list[int],
     e: float,
     numbers: np.ndarray,
-) -> bool:
+) -> list[int]:
     """Record ``numbers`` into each still-short window containing ``e``.
 
     Mutates ``found`` and ``seen`` in place: dedups per window by
     occupation-vector bytes and never exceeds a window's target count.
-    Returns ``True`` once every window has reached its target.
+    Returns the indices of the windows it appended to (empty if the
+    config was a duplicate or every containing window was already full).
     """
     key = numbers.tobytes()
+    appended: list[int] = []
     for i in _windows_containing(e, windows):
         if len(found[i]) < counts[i] and key not in seen[i]:
             seen[i].add(key)
             found[i].append(numbers.copy())
-    return all(len(found[i]) >= counts[i] for i in range(len(counts)))
+            appended.append(i)
+    return appended
 
 
 def _inject_ground_state(
@@ -365,15 +368,16 @@ def find_all_window_configs(
 
     worker_error: list[str] = []
 
-    def _handle(item: tuple) -> bool:
+    def _handle(item: tuple) -> list[int]:
         """Record a queue item, or capture a worker-error sentinel.
 
-        Returns ``True`` once every window has reached its target.
+        Returns the window indices a recorded config was appended to
+        (empty for a duplicate, a full window, or a worker-error sentinel).
         """
         tag, payload = item
         if tag == _WORKER_ERROR:
             worker_error.append(payload)
-            return False
+            return []
         return _record_config(found, seen, windows, counts, tag, payload)
 
     def _drain() -> None:
@@ -390,9 +394,7 @@ def find_all_window_configs(
 
     t_start = time.monotonic()
     next_heartbeat = t_start + _HEARTBEAT_INTERVAL_S
-    n_filled_prev = _fill_status(found, counts)[0]
-    satisfied = _satisfied()
-    while not satisfied and not worker_error:
+    while not _satisfied() and not worker_error:
         now = time.monotonic()
         if now >= next_heartbeat:
             n_filled, short = _fill_status(found, counts)
@@ -408,11 +410,18 @@ def find_all_window_configs(
             if not any(p.is_alive() for p in procs):
                 break
             continue
-        satisfied = _handle(item)
-        n_filled = _fill_status(found, counts)[0]
-        if n_filled > n_filled_prev:
-            print(f"  ({n_filled}/{n_windows} windows filled)", flush=True)
-            n_filled_prev = n_filled
+        for i in _handle(item):
+            if len(found[i]) >= counts[i]:
+                n_filled = _fill_status(found, counts)[0]
+                print(
+                    f"  window {i}: {counts[i]}/{counts[i]} complete "
+                    f"({n_filled}/{n_windows} windows filled)",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"  window {i}: {len(found[i])}/{counts[i]}", flush=True
+                )
 
     # Wind the workers down. Keep draining the queue while they exit: a
     # worker blocked on a full queue cannot observe ``stop_event`` and would
