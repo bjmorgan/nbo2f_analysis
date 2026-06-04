@@ -33,6 +33,9 @@ _SHUTDOWN_TIMEOUT_S = 15.0
 # exception, so the parent re-raises it rather than misreporting the fault
 # as an unfillable window.
 _WORKER_ERROR = "__worker_error__"
+# How often (seconds) the parent prints a search progress heartbeat while
+# waiting for windows to fill.
+_HEARTBEAT_INTERVAL_S = 30.0
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,26 @@ def _windows_containing(
     return [i for i, (lo, hi) in enumerate(windows) if lo <= e <= hi]
 
 
+def _fill_status(
+    found: list[list[np.ndarray]], counts: list[int]
+) -> tuple[int, dict[int, str]]:
+    """Summarise per-window search progress.
+
+    Returns ``(n_filled, short)`` where ``n_filled`` is the number of
+    windows that have reached their target and ``short`` maps each
+    still-short window index to a ``"found/target"`` string.
+    """
+    n_filled = sum(
+        1 for i in range(len(counts)) if len(found[i]) >= counts[i]
+    )
+    short = {
+        i: f"{len(found[i])}/{counts[i]}"
+        for i in range(len(counts))
+        if len(found[i]) < counts[i]
+    }
+    return n_filled, short
+
+
 def _record_config(
     found: list[list[np.ndarray]],
     seen: list[set[bytes]],
@@ -76,19 +99,22 @@ def _record_config(
     counts: list[int],
     e: float,
     numbers: np.ndarray,
-) -> bool:
+) -> list[int]:
     """Record ``numbers`` into each still-short window containing ``e``.
 
     Mutates ``found`` and ``seen`` in place: dedups per window by
     occupation-vector bytes and never exceeds a window's target count.
-    Returns ``True`` once every window has reached its target.
+    Returns the indices of the windows it appended to (empty if the
+    config was a duplicate or every containing window was already full).
     """
     key = numbers.tobytes()
+    appended: list[int] = []
     for i in _windows_containing(e, windows):
         if len(found[i]) < counts[i] and key not in seen[i]:
             seen[i].add(key)
             found[i].append(numbers.copy())
-    return all(len(found[i]) >= counts[i] for i in range(len(counts)))
+            appended.append(i)
+    return appended
 
 
 def _inject_ground_state(
@@ -342,15 +368,16 @@ def find_all_window_configs(
 
     worker_error: list[str] = []
 
-    def _handle(item: tuple) -> bool:
+    def _handle(item: tuple) -> list[int]:
         """Record a queue item, or capture a worker-error sentinel.
 
-        Returns ``True`` once every window has reached its target.
+        Returns the window indices a recorded config was appended to
+        (empty for a duplicate, a full window, or a worker-error sentinel).
         """
         tag, payload = item
         if tag == _WORKER_ERROR:
             worker_error.append(payload)
-            return False
+            return []
         return _record_config(found, seen, windows, counts, tag, payload)
 
     def _drain() -> None:
@@ -365,15 +392,38 @@ def find_all_window_configs(
                 return
             _handle(item)
 
-    satisfied = _satisfied()
-    while not satisfied and not worker_error:
+    t_start = time.monotonic()
+    next_heartbeat = t_start + _HEARTBEAT_INTERVAL_S
+    while not _satisfied() and not worker_error:
+        now = time.monotonic()
+        if now >= next_heartbeat:
+            n_filled, short = _fill_status(found, counts)
+            print(
+                f"  [search] {now - t_start:.0f}s elapsed, "
+                f"{n_filled}/{n_windows} windows filled; still short: {short}",
+                flush=True,
+            )
+            # Reset relative to ``now`` (not ``+= interval``) so a stall longer
+            # than the interval doesn't emit a burst of catch-up heartbeats.
+            next_heartbeat = now + _HEARTBEAT_INTERVAL_S
         try:
             item = result_queue.get(timeout=0.5)
         except queue.Empty:
             if not any(p.is_alive() for p in procs):
                 break
             continue
-        satisfied = _handle(item)
+        for i in _handle(item):
+            if len(found[i]) >= counts[i]:
+                n_filled = _fill_status(found, counts)[0]
+                print(
+                    f"  window {i}: {counts[i]}/{counts[i]} complete "
+                    f"({n_filled}/{n_windows} windows filled)",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"  window {i}: {len(found[i])}/{counts[i]}", flush=True
+                )
 
     # Wind the workers down. Keep draining the queue while they exit: a
     # worker blocked on a full queue cannot observe ``stop_event`` and would
@@ -401,6 +451,12 @@ def find_all_window_configs(
         )
 
     if not _satisfied() and params.backstop_sweeps > 0:
+        _, short = _fill_status(found, counts)
+        print(
+            f"  anneals left {len(short)} window(s) short {short}; "
+            f"running lingering backstop...",
+            flush=True,
+        )
         sublattice_index = resolve_anion_sublattice_index(calc)
         moves = build_moves(n_sc, sublattice_index, moves_cfg)
         _lingering_backstop(
@@ -426,4 +482,9 @@ def find_all_window_configs(
             atoms.numbers = numbers
             per_window.append(atoms)
         out.append(per_window)
+    print(
+        f"  [search] complete: all {n_windows} windows filled in "
+        f"{time.monotonic() - t_start:.0f}s",
+        flush=True,
+    )
     return out

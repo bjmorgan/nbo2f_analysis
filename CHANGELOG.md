@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-04
+
+### Added
+
+- The starting-configuration search now logs progress: a line each time a
+  configuration is harvested into a window (showing that window's
+  found/target count, plus a windows-filled tally when it completes), a
+  periodic heartbeat listing which windows are still short, a notice when
+  the lingering backstop runs, and a completion line. A long search is now
+  legible instead of silent.
+
 ## [0.3.0] - 2026-06-04
 
 ### Added

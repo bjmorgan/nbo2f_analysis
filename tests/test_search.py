@@ -10,6 +10,7 @@ from nbo2f_analysis.ce_tools import build_tiled_groundstate_atoms
 from nbo2f_analysis.rewl.search import (
     find_all_window_configs,
     SearchParams,
+    _fill_status,
     _geometric_schedule,
     _windows_containing,
     _record_config,
@@ -30,6 +31,26 @@ def test_geometric_schedule_single_level():
     assert _geometric_schedule(2000.0, 100.0, 1) == [2000.0]
 
 
+def test_fill_status_counts_filled_and_reports_short():
+    counts = [2, 1, 3]
+    found = [[object(), object()], [], [object()]]
+    n_filled, short = _fill_status(found, counts)
+    assert n_filled == 1
+    assert short == {1: "0/1", 2: "1/3"}
+
+
+def test_fill_status_all_filled_has_no_shortfall():
+    counts = [2, 1, 3]
+    found = [
+        [object(), object()],
+        [object()],
+        [object(), object(), object()],
+    ]
+    n_filled, short = _fill_status(found, counts)
+    assert n_filled == 3
+    assert short == {}
+
+
 def test_windows_containing():
     windows = [(-10.0, -8.0), (-9.0, -7.0)]
     assert _windows_containing(-8.5, windows) == [0, 1]
@@ -44,12 +65,12 @@ def test_record_config_dedups_and_caps_per_window():
     seen = [set(), set()]
     a = np.array([1, 2, 3], dtype=np.int64)
     b = np.array([4, 5, 6], dtype=np.int64)
-    # -8.5 is in both windows; fills window 1 (cap 1) and one slot of window 0.
-    assert _record_config(found, seen, windows, counts, -8.5, a) is False
-    # Identical vector is deduped everywhere.
-    assert _record_config(found, seen, windows, counts, -8.5, a) is False
+    # -8.5 is in both windows; appended to window 0 and window 1.
+    assert _record_config(found, seen, windows, counts, -8.5, a) == [0, 1]
+    # Identical vector is deduped everywhere: nothing appended.
+    assert _record_config(found, seen, windows, counts, -8.5, a) == []
     # A distinct vector fills window 0's second slot; window 1 already capped.
-    assert _record_config(found, seen, windows, counts, -8.5, b) is True
+    assert _record_config(found, seen, windows, counts, -8.5, b) == [0]
     assert len(found[0]) == 2
     assert len(found[1]) == 1
 
