@@ -33,6 +33,9 @@ _SHUTDOWN_TIMEOUT_S = 15.0
 # exception, so the parent re-raises it rather than misreporting the fault
 # as an unfillable window.
 _WORKER_ERROR = "__worker_error__"
+# How often (seconds) the parent prints a search progress heartbeat while
+# waiting for windows to fill.
+_HEARTBEAT_INTERVAL_S = 30.0
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,26 @@ def _windows_containing(
 ) -> list[int]:
     """Indices of every window whose band contains energy ``e``."""
     return [i for i, (lo, hi) in enumerate(windows) if lo <= e <= hi]
+
+
+def _fill_status(
+    found: list[list[np.ndarray]], counts: list[int]
+) -> tuple[int, dict[int, str]]:
+    """Summarise per-window search progress.
+
+    Returns ``(n_filled, short)`` where ``n_filled`` is the number of
+    windows that have reached their target and ``short`` maps each
+    still-short window index to a ``"found/target"`` string.
+    """
+    n_filled = sum(
+        1 for i in range(len(counts)) if len(found[i]) >= counts[i]
+    )
+    short = {
+        i: f"{len(found[i])}/{counts[i]}"
+        for i in range(len(counts))
+        if len(found[i]) < counts[i]
+    }
+    return n_filled, short
 
 
 def _record_config(
@@ -365,8 +388,20 @@ def find_all_window_configs(
                 return
             _handle(item)
 
+    t_start = time.monotonic()
+    next_heartbeat = t_start + _HEARTBEAT_INTERVAL_S
+    n_filled_prev = _fill_status(found, counts)[0]
     satisfied = _satisfied()
     while not satisfied and not worker_error:
+        now = time.monotonic()
+        if now >= next_heartbeat:
+            n_filled, short = _fill_status(found, counts)
+            print(
+                f"  [search] {now - t_start:.0f}s elapsed, "
+                f"{n_filled}/{n_windows} windows filled; still short: {short}",
+                flush=True,
+            )
+            next_heartbeat += _HEARTBEAT_INTERVAL_S
         try:
             item = result_queue.get(timeout=0.5)
         except queue.Empty:
@@ -374,6 +409,10 @@ def find_all_window_configs(
                 break
             continue
         satisfied = _handle(item)
+        n_filled = _fill_status(found, counts)[0]
+        if n_filled > n_filled_prev:
+            print(f"  ({n_filled}/{n_windows} windows filled)", flush=True)
+            n_filled_prev = n_filled
 
     # Wind the workers down. Keep draining the queue while they exit: a
     # worker blocked on a full queue cannot observe ``stop_event`` and would
@@ -401,6 +440,12 @@ def find_all_window_configs(
         )
 
     if not _satisfied() and params.backstop_sweeps > 0:
+        _, short = _fill_status(found, counts)
+        print(
+            f"  anneals left {len(short)} window(s) short {short}; "
+            f"running lingering backstop...",
+            flush=True,
+        )
         sublattice_index = resolve_anion_sublattice_index(calc)
         moves = build_moves(n_sc, sublattice_index, moves_cfg)
         _lingering_backstop(
@@ -426,4 +471,9 @@ def find_all_window_configs(
             atoms.numbers = numbers
             per_window.append(atoms)
         out.append(per_window)
+    print(
+        f"  [search] complete: all {n_windows} windows filled in "
+        f"{time.monotonic() - t_start:.0f}s",
+        flush=True,
+    )
     return out

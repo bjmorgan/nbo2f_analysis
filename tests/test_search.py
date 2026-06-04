@@ -10,6 +10,7 @@ from nbo2f_analysis.ce_tools import build_tiled_groundstate_atoms
 from nbo2f_analysis.rewl.search import (
     find_all_window_configs,
     SearchParams,
+    _fill_status,
     _geometric_schedule,
     _windows_containing,
     _record_config,
@@ -28,6 +29,14 @@ def test_geometric_schedule_endpoints_and_monotone():
 
 def test_geometric_schedule_single_level():
     assert _geometric_schedule(2000.0, 100.0, 1) == [2000.0]
+
+
+def test_fill_status_counts_filled_and_reports_short():
+    counts = [2, 1, 3]
+    found = [[object(), object()], [], [object()]]
+    n_filled, short = _fill_status(found, counts)
+    assert n_filled == 1
+    assert short == {1: "0/1", 2: "1/3"}
 
 
 def test_windows_containing():
