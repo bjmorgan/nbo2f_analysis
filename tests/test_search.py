@@ -39,6 +39,18 @@ def test_fill_status_counts_filled_and_reports_short():
     assert short == {1: "0/1", 2: "1/3"}
 
 
+def test_fill_status_all_filled_has_no_shortfall():
+    counts = [2, 1, 3]
+    found = [
+        [object(), object()],
+        [object()],
+        [object(), object(), object()],
+    ]
+    n_filled, short = _fill_status(found, counts)
+    assert n_filled == 3
+    assert short == {}
+
+
 def test_windows_containing():
     windows = [(-10.0, -8.0), (-9.0, -7.0)]
     assert _windows_containing(-8.5, windows) == [0, 1]
