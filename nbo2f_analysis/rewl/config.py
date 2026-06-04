@@ -277,7 +277,7 @@ def load_yaml(path: str | Path) -> RewlConfig:
             f"config_search.max_walks_per_window must be >= 1, "
             f"got {cs.max_walks_per_window}"
         )
-    max_walkers = max(windows.walkers_per_window)
+    max_walkers: int = max(windows.walkers_per_window)
     if cs.max_walks_per_window < max_walkers:
         raise ValueError(
             f"config_search.max_walks_per_window ({cs.max_walks_per_window}) "

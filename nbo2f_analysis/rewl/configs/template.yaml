@@ -37,7 +37,7 @@ moves:
 config_search:
   n_workers: null                  # null -> library default (os.cpu_count())
   window_search_penalty: 2.0       # into-window penalty-walk bias (higher = stronger)
-  walk_sweeps: 50                  # MC sweeps per confined walk (x n_atoms = steps)
+  walk_sweeps: 50                  # MC sweeps per confined walk (x total atoms = MC steps)
   max_walks_per_window: 20         # walks per window; must be >= largest walker count
 
 checkpoint:

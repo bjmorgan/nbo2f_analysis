@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 from ase import Atoms
 from icet import ClusterExpansion
+from mchammer.calculators import ClusterExpansionCalculator
 from mchammer_pt import SeedSearchParams, seed_window_configs
 
 from nbo2f_analysis.ce_tools import (
@@ -18,6 +19,10 @@ from nbo2f_analysis.ce_tools import (
     build_tiled_groundstate_atoms,
 )
 from nbo2f_analysis.rewl.config import MovesCfg
+from nbo2f_analysis.rewl.nbo2f import (
+    build_moves,
+    resolve_anion_sublattice_index,
+)
 
 
 def find_all_window_configs(
@@ -63,13 +68,6 @@ def find_all_window_configs(
     Raises:
         RuntimeError: (from the library) if a window cannot be filled.
     """
-    from mchammer.calculators import ClusterExpansionCalculator
-
-    from nbo2f_analysis.rewl.nbo2f import (
-        build_moves,
-        resolve_anion_sublattice_index,
-    )
-
     bottom_anchor = build_tiled_groundstate_atoms(n_sc=n_sc)
     calc = ClusterExpansionCalculator(bottom_anchor.copy(), ce)
     sublattice_index = resolve_anion_sublattice_index(calc)

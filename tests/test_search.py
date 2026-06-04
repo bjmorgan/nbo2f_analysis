@@ -85,7 +85,10 @@ def test_find_all_window_configs_forwards_contracts(monkeypatch):
     assert captured["energy_spacing"] == 0.5
     assert captured["random_seed"] == 99
     assert captured["params"] is params
+    # Moves are forwarded as (move, weight) pairs with the configured weight.
     assert len(captured["moves"]) == 1
+    _move, weight = captured["moves"][0]
+    assert weight == 1.0
 
     gs = build_tiled_groundstate_atoms(n_sc=n_sc)
     anchor = captured["bottom_anchor"]
@@ -101,6 +104,10 @@ def test_find_all_window_configs_forwards_contracts(monkeypatch):
     symbols = fill.get_chemical_symbols()
     assert symbols.count("F") == n_sc**3
     assert symbols.count("Nb") == gs.get_chemical_symbols().count("Nb")
+    # The fill is seed-driven (distinct seeds give distinct arrangements) and
+    # genuinely disordered (not the ground-state occupation).
+    assert fill.get_chemical_symbols() != captured["random_fill"](1).get_chemical_symbols()
+    assert symbols != gs.get_chemical_symbols()
 
 
 @pytest.mark.slow
