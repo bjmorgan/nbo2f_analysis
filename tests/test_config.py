@@ -62,6 +62,31 @@ checkpoint: {filename: c.h5, interval_cycles: 0}
         load_yaml(bad)
 
 
+def test_load_yaml_rejects_single_window(tmp_path):
+    # A lone window passes the schema but cannot drive replica-exchange PT,
+    # which needs at least two windows to swap between.
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("""
+random_seed: 0
+system: {n_sc: 3, ce: paircut9_5_5_ardr_n96}
+windows:
+  energy_spacing: 0.1
+  list:
+    - [-10.0, -9.0, 1]
+wl: {flatness_limit: 0.8, fill_factor_limit: 1.0e-12, schedule: "1_over_t",
+     flatness_mode: "pooled", merge_cadence: "at_halve",
+     n_trials_per_walker: 1000, block_size_sweeps: 10,
+     trajectory_write_interval_sweeps: 0}
+moves:
+  - {type: pair_swap, weight: 0.1}
+  - {type: row_shift, weight: 0.2}
+config_search: {n_workers: 1, temperature_high: 2000.0, temperature_low: 100.0, n_temperature_levels: 4, sweeps_per_level: 2, harvest_interval_sweeps: 1, max_anneals_per_worker: 4, backstop_temperature: 150.0, backstop_sweeps: 2}
+checkpoint: {filename: c.h5, interval_cycles: 0}
+""")
+    with pytest.raises(ValueError, match="at least two windows"):
+        load_yaml(bad)
+
+
 def test_load_yaml_rejects_both_ce_and_ce_path(tmp_path):
     bad = tmp_path / "bad.yaml"
     bad.write_text("""
