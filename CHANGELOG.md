@@ -5,7 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-06-04
+
+### Added
+
+- Per-walker starting structures: multiwalker REWL windows are now
+  seeded with distinct, decorrelated configurations (one per walker)
+  rather than replicating a single structure across the window.
+
+### Changed
+
+- The starting-configuration search is now a parallel simulated anneal
+  driven by the production move set (Metropolis on the cluster-expansion
+  energy), replacing the blind O/F-swap sampler. Each anneal harvests
+  distinct in-window configurations on the way down a geometric
+  temperature schedule; a fixed-temperature lingering backstop tops up
+  any window the anneals leave short, and the ground state is seeded once
+  into the lowest window. All search randomness derives from the run's
+  ``random_seed``.
+- BREAKING: the ``config_search`` YAML section changed. The blind-sampler
+  knobs (``max_swaps``, ``attempts_per_swap_count``, ``random_attempts``)
+  are replaced by annealing knobs (``temperature_high``,
+  ``temperature_low``, ``n_temperature_levels``, ``sweeps_per_level``,
+  ``harvest_interval_sweeps``, ``max_anneals_per_worker``,
+  ``backstop_temperature``, ``backstop_sweeps``). Existing config files
+  must be updated; see the bundled example configs under
+  ``nbo2f_analysis/rewl/configs/``.
+- Requires ``mchammer-pt`` 0.17.0 or newer, which adds the per-window
+  single-or-sequence ``atoms`` argument to
+  ``WangLandauParallelTempering.process_pool`` that per-walker seeding
+  relies on. The git dependency tracks ``main``; ensure the installed
+  ``mchammer-pt`` is at least 0.17.0.
 
 ## [0.2.0] - 2026-06-01
 

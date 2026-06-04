@@ -66,9 +66,14 @@ class MovesCfg:
 @dataclass(frozen=True)
 class ConfigSearchCfg:
     n_workers: int | None
-    max_swaps: tuple[int, ...]
-    attempts_per_swap_count: int
-    random_attempts: int
+    temperature_high: float
+    temperature_low: float
+    n_temperature_levels: int
+    sweeps_per_level: int
+    harvest_interval_sweeps: int
+    max_anneals_per_worker: int
+    backstop_temperature: float
+    backstop_sweeps: int
 
 
 @dataclass(frozen=True)
@@ -248,33 +253,61 @@ def load_yaml(path: str | Path) -> RewlConfig:
     moves_cfg = MovesCfg(list=tuple(move_specs))
 
     cs_raw = raw["config_search"]
-    raw_max_swaps = cs_raw["max_swaps"]
-    if not isinstance(raw_max_swaps, list) or not all(
-        isinstance(x, int) and not isinstance(x, bool) for x in raw_max_swaps
-    ):
-        raise ValueError(
-            f"config_search.max_swaps must be a list of ints, "
-            f"got {raw_max_swaps!r}"
-        )
-    if not raw_max_swaps:
-        raise ValueError(
-            "config_search.max_swaps must contain at least one entry"
-        )
-    if any(x < 1 for x in raw_max_swaps):
-        raise ValueError(
-            f"config_search.max_swaps entries must all be >= 1, "
-            f"got {raw_max_swaps!r}"
-        )
     cs = ConfigSearchCfg(
         n_workers=(
             int(cs_raw["n_workers"])
             if cs_raw.get("n_workers") is not None
             else None
         ),
-        max_swaps=tuple(raw_max_swaps),
-        attempts_per_swap_count=int(cs_raw["attempts_per_swap_count"]),
-        random_attempts=int(cs_raw["random_attempts"]),
+        temperature_high=float(cs_raw["temperature_high"]),
+        temperature_low=float(cs_raw["temperature_low"]),
+        n_temperature_levels=int(cs_raw["n_temperature_levels"]),
+        sweeps_per_level=int(cs_raw["sweeps_per_level"]),
+        harvest_interval_sweeps=int(cs_raw["harvest_interval_sweeps"]),
+        max_anneals_per_worker=int(cs_raw["max_anneals_per_worker"]),
+        backstop_temperature=float(cs_raw["backstop_temperature"]),
+        backstop_sweeps=int(cs_raw["backstop_sweeps"]),
     )
+    if cs.n_workers is not None and cs.n_workers < 1:
+        raise ValueError(
+            f"config_search.n_workers must be >= 1 when set, "
+            f"got {cs.n_workers}"
+        )
+    if not (cs.temperature_high > cs.temperature_low > 0):
+        raise ValueError(
+            f"config_search: require temperature_high > temperature_low > 0, "
+            f"got high={cs.temperature_high}, low={cs.temperature_low}"
+        )
+    if cs.n_temperature_levels < 1:
+        raise ValueError(
+            f"config_search.n_temperature_levels must be >= 1, "
+            f"got {cs.n_temperature_levels}"
+        )
+    if cs.sweeps_per_level < 1:
+        raise ValueError(
+            f"config_search.sweeps_per_level must be >= 1, "
+            f"got {cs.sweeps_per_level}"
+        )
+    if cs.harvest_interval_sweeps < 1:
+        raise ValueError(
+            f"config_search.harvest_interval_sweeps must be >= 1, "
+            f"got {cs.harvest_interval_sweeps}"
+        )
+    if cs.max_anneals_per_worker < 1:
+        raise ValueError(
+            f"config_search.max_anneals_per_worker must be >= 1, "
+            f"got {cs.max_anneals_per_worker}"
+        )
+    if cs.backstop_temperature <= 0:
+        raise ValueError(
+            f"config_search.backstop_temperature must be > 0, "
+            f"got {cs.backstop_temperature}"
+        )
+    if cs.backstop_sweeps < 0:
+        raise ValueError(
+            f"config_search.backstop_sweeps must be >= 0, "
+            f"got {cs.backstop_sweeps}"
+        )
 
     ck_raw = raw["checkpoint"]
     ckpt = CheckpointCfg(
