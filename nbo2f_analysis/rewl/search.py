@@ -403,7 +403,9 @@ def find_all_window_configs(
                 f"{n_filled}/{n_windows} windows filled; still short: {short}",
                 flush=True,
             )
-            next_heartbeat += _HEARTBEAT_INTERVAL_S
+            # Reset relative to ``now`` (not ``+= interval``) so a stall longer
+            # than the interval doesn't emit a burst of catch-up heartbeats.
+            next_heartbeat = now + _HEARTBEAT_INTERVAL_S
         try:
             item = result_queue.get(timeout=0.5)
         except queue.Empty:
