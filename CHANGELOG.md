@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-04
+
+### Changed
+
+- BREAKING: the `config_search` section of the run YAML has a new schema.
+  The annealing knobs (`temperature_high`, `temperature_low`,
+  `n_temperature_levels`, `sweeps_per_level`, `harvest_interval_sweeps`,
+  `max_anneals_per_worker`, `backstop_temperature`, `backstop_sweeps`) are
+  removed and replaced by `window_search_penalty`, `walk_sweeps`,
+  `max_walks_per_window`, and `n_workers`. Update existing configs to the
+  new keys (see the shipped example configs).
+- The starting-configuration search now delegates to the material-agnostic
+  `mchammer_pt.seed_window_configs` (requires mchammer-pt >= 0.18.0),
+  replacing the in-tree parallel-anneal search with the upstream
+  bidirectional confined-walk search. Narrow low-energy and high-energy
+  windows that the anneal could not fill are now seeded reliably.
+
 ## [0.3.1] - 2026-06-04
 
 ### Added

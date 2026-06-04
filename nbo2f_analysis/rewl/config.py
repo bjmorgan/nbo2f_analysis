@@ -66,14 +66,9 @@ class MovesCfg:
 @dataclass(frozen=True)
 class ConfigSearchCfg:
     n_workers: int | None
-    temperature_high: float
-    temperature_low: float
-    n_temperature_levels: int
-    sweeps_per_level: int
-    harvest_interval_sweeps: int
-    max_anneals_per_worker: int
-    backstop_temperature: float
-    backstop_sweeps: int
+    window_search_penalty: float
+    walk_sweeps: int
+    max_walks_per_window: int
 
 
 @dataclass(frozen=True)
@@ -259,54 +254,35 @@ def load_yaml(path: str | Path) -> RewlConfig:
             if cs_raw.get("n_workers") is not None
             else None
         ),
-        temperature_high=float(cs_raw["temperature_high"]),
-        temperature_low=float(cs_raw["temperature_low"]),
-        n_temperature_levels=int(cs_raw["n_temperature_levels"]),
-        sweeps_per_level=int(cs_raw["sweeps_per_level"]),
-        harvest_interval_sweeps=int(cs_raw["harvest_interval_sweeps"]),
-        max_anneals_per_worker=int(cs_raw["max_anneals_per_worker"]),
-        backstop_temperature=float(cs_raw["backstop_temperature"]),
-        backstop_sweeps=int(cs_raw["backstop_sweeps"]),
+        window_search_penalty=float(cs_raw["window_search_penalty"]),
+        walk_sweeps=int(cs_raw["walk_sweeps"]),
+        max_walks_per_window=int(cs_raw["max_walks_per_window"]),
     )
     if cs.n_workers is not None and cs.n_workers < 1:
         raise ValueError(
             f"config_search.n_workers must be >= 1 when set, "
             f"got {cs.n_workers}"
         )
-    if not (cs.temperature_high > cs.temperature_low > 0):
+    if not (cs.window_search_penalty > 0):
         raise ValueError(
-            f"config_search: require temperature_high > temperature_low > 0, "
-            f"got high={cs.temperature_high}, low={cs.temperature_low}"
+            f"config_search.window_search_penalty must be > 0, "
+            f"got {cs.window_search_penalty}"
         )
-    if cs.n_temperature_levels < 1:
+    if cs.walk_sweeps < 1:
         raise ValueError(
-            f"config_search.n_temperature_levels must be >= 1, "
-            f"got {cs.n_temperature_levels}"
+            f"config_search.walk_sweeps must be >= 1, got {cs.walk_sweeps}"
         )
-    if cs.sweeps_per_level < 1:
+    if cs.max_walks_per_window < 1:
         raise ValueError(
-            f"config_search.sweeps_per_level must be >= 1, "
-            f"got {cs.sweeps_per_level}"
+            f"config_search.max_walks_per_window must be >= 1, "
+            f"got {cs.max_walks_per_window}"
         )
-    if cs.harvest_interval_sweeps < 1:
+    max_walkers: int = max(windows.walkers_per_window)
+    if cs.max_walks_per_window < max_walkers:
         raise ValueError(
-            f"config_search.harvest_interval_sweeps must be >= 1, "
-            f"got {cs.harvest_interval_sweeps}"
-        )
-    if cs.max_anneals_per_worker < 1:
-        raise ValueError(
-            f"config_search.max_anneals_per_worker must be >= 1, "
-            f"got {cs.max_anneals_per_worker}"
-        )
-    if cs.backstop_temperature <= 0:
-        raise ValueError(
-            f"config_search.backstop_temperature must be > 0, "
-            f"got {cs.backstop_temperature}"
-        )
-    if cs.backstop_sweeps < 0:
-        raise ValueError(
-            f"config_search.backstop_sweeps must be >= 0, "
-            f"got {cs.backstop_sweeps}"
+            f"config_search.max_walks_per_window ({cs.max_walks_per_window}) "
+            f"must be >= the largest window walker count ({max_walkers}); "
+            f"a window gains at most one config per walk round."
         )
 
     ck_raw = raw["checkpoint"]

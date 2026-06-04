@@ -41,14 +41,9 @@ moves:
 
 config_search:
   n_workers: null
-  temperature_high: 3000.0
-  temperature_low: 100.0
-  n_temperature_levels: 12
-  sweeps_per_level: 20
-  harvest_interval_sweeps: 5
-  max_anneals_per_worker: 200
-  backstop_temperature: 300.0
-  backstop_sweeps: 500
+  window_search_penalty: 2.0
+  walk_sweeps: 50
+  max_walks_per_window: 20
 
 checkpoint:
   filename: rewl_state.h5

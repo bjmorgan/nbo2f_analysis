@@ -15,7 +15,7 @@ os.environ.setdefault("PYMBAR_DISABLE_JAX", "1")
 
 from icet import ClusterExpansion
 from mchammer.calculators import ClusterExpansionCalculator
-from mchammer_pt import WangLandauProgressPrinter
+from mchammer_pt import SeedSearchParams, WangLandauProgressPrinter
 from mchammer_pt.contrib import CoordinatedCustomWangLandauEnsemble
 from mchammer_pt.wl import WangLandauParallelTempering
 
@@ -26,10 +26,7 @@ from nbo2f_analysis.rewl.nbo2f import (
     resolve_anion_sublattice_index,
 )
 from nbo2f_analysis.rewl.postprocess import write_all
-from nbo2f_analysis.rewl.search import (
-    SearchParams,
-    find_all_window_configs,
-)
+from nbo2f_analysis.rewl.search import find_all_window_configs
 
 
 def _build_ensemble_kwargs(cfg: RewlConfig, moves, n_atoms: int) -> dict:
@@ -92,29 +89,20 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
         f"walkers={cfg.windows.walkers_per_window}"
     )
 
-    n_workers = (
-        cfg.config_search.n_workers
-        if cfg.config_search.n_workers is not None
-        else min(os.cpu_count() or 1, n_windows)
-    )
-    search_params = SearchParams(
-        temperature_high=cfg.config_search.temperature_high,
-        temperature_low=cfg.config_search.temperature_low,
-        n_temperature_levels=cfg.config_search.n_temperature_levels,
-        sweeps_per_level=cfg.config_search.sweeps_per_level,
-        harvest_interval_sweeps=cfg.config_search.harvest_interval_sweeps,
-        max_anneals_per_worker=cfg.config_search.max_anneals_per_worker,
-        backstop_temperature=cfg.config_search.backstop_temperature,
-        backstop_sweeps=cfg.config_search.backstop_sweeps,
+    search_params = SeedSearchParams(
+        window_search_penalty=cfg.config_search.window_search_penalty,
+        walk_sweeps=cfg.config_search.walk_sweeps,
+        max_walks_per_window=cfg.config_search.max_walks_per_window,
+        n_workers=cfg.config_search.n_workers,
     )
     print("Finding starting configurations (parallel search)...")
     atoms_per_window = find_all_window_configs(
-        ce_path=str(resolve_ce_path(cfg)),
+        ce=ce,
         n_sc=cfg.system.n_sc,
         windows=cfg.windows.bounds,
         counts=cfg.windows.walkers_per_window,
+        energy_spacing=cfg.windows.energy_spacing,
         moves_cfg=cfg.moves,
-        n_workers=n_workers,
         params=search_params,
         seed=cfg.random_seed,
     )
