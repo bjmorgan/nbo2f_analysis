@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   distinct in-window configurations on the way down a geometric
   temperature schedule; a fixed-temperature lingering backstop tops up
   any window the anneals leave short, and the ground state is seeded once
-  into the lowest window.
+  into the lowest window. All search randomness derives from the run's
+  ``random_seed``.
 - BREAKING: the ``config_search`` YAML section changed. The blind-sampler
   knobs (``max_swaps``, ``attempts_per_swap_count``, ``random_attempts``)
   are replaced by annealing knobs (``temperature_high``,
