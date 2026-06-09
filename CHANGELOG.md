@@ -17,8 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under the `"flatness"` gate. Both are validated at config load.
   Omitting them reproduces the previous `visit_once` schedule, so
   existing configs parse and behave unchanged. On resume the knobs are
-  restored from the checkpoint, so `resume` and `postprocess` take no
-  config change.
+  read back from the checkpoint rather than the config.
 - Requires `mchammer-pt` 0.21.0 or newer, which adds these arguments to
   `process_pool`. The git dependency tracks `main`; ensure the installed
   `mchammer-pt` is at least 0.21.0.

@@ -167,7 +167,7 @@ checkpoint: {{filename: c.h5, interval_cycles: 0}}
 
 
 def test_load_yaml_defaults_gate_knobs_when_absent():
-    # A config without the new keys reproduces today's visit_once schedule.
+    # A config without the new keys reproduces the visit_once schedule.
     cfg = load_yaml(DATA / "L9_minimal.yaml")
     assert cfg.wl.one_over_t_gate == "visit_once"
     assert cfg.wl.bp_stall_multiple == 4.0
@@ -191,7 +191,16 @@ def test_load_yaml_rejects_unknown_one_over_t_gate(tmp_path):
 
 def test_load_yaml_rejects_non_positive_bp_stall_multiple(tmp_path):
     p = _cfg_with_wl_keys(tmp_path, "  bp_stall_multiple: 0.0")
-    with pytest.raises(ValueError, match="bp_stall_multiple must be > 0"):
+    with pytest.raises(ValueError, match="bp_stall_multiple must be a finite"):
+        load_yaml(p)
+
+
+@pytest.mark.parametrize("value", [".nan", ".inf"])
+def test_load_yaml_rejects_non_finite_bp_stall_multiple(tmp_path, value):
+    # nan/inf slip past a bare ``<= 0`` check; reject them at config load
+    # rather than after the expensive starting-configuration search.
+    p = _cfg_with_wl_keys(tmp_path, f"  bp_stall_multiple: {value}")
+    with pytest.raises(ValueError, match="bp_stall_multiple must be a finite"):
         load_yaml(p)
 
 

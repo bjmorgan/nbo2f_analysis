@@ -1,6 +1,7 @@
 """Configuration dataclasses and YAML loader for the REWL driver."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -197,9 +198,10 @@ def load_yaml(path: str | Path) -> RewlConfig:
             f"wl.one_over_t_gate={wl.one_over_t_gate!r} not in "
             f"{sorted(ALLOWED_ONE_OVER_T_GATES)}"
         )
-    if wl.bp_stall_multiple <= 0:
+    if not math.isfinite(wl.bp_stall_multiple) or wl.bp_stall_multiple <= 0:
         raise ValueError(
-            f"wl.bp_stall_multiple must be > 0, got {wl.bp_stall_multiple}"
+            f"wl.bp_stall_multiple must be a finite positive number, "
+            f"got {wl.bp_stall_multiple}"
         )
     if wl.n_trials_per_walker <= 0:
         raise ValueError(
