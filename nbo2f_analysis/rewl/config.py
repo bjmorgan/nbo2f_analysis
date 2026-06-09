@@ -10,6 +10,7 @@ import yaml
 ALLOWED_SCHEDULES = {"1_over_t"}
 ALLOWED_FLATNESS_MODES = {"pooled", "per_walker"}
 ALLOWED_MERGE_CADENCES = {"at_halve", "never"}
+ALLOWED_ONE_OVER_T_GATES = {"visit_once", "flatness"}
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,8 @@ class WlCfg:
     n_trials_per_walker: int
     block_size_sweeps: int
     trajectory_write_interval_sweeps: int
+    one_over_t_gate: str = "visit_once"
+    bp_stall_multiple: float = 4.0
 
 
 @dataclass(frozen=True)
@@ -164,6 +167,8 @@ def load_yaml(path: str | Path) -> RewlConfig:
         trajectory_write_interval_sweeps=int(
             wl_raw["trajectory_write_interval_sweeps"]
         ),
+        one_over_t_gate=str(wl_raw.get("one_over_t_gate", "visit_once")),
+        bp_stall_multiple=float(wl_raw.get("bp_stall_multiple", 4.0)),
     )
     if not (0.0 < wl.flatness_limit < 1.0):
         raise ValueError(
@@ -186,6 +191,15 @@ def load_yaml(path: str | Path) -> RewlConfig:
         raise ValueError(
             f"wl.merge_cadence={wl.merge_cadence!r} not in "
             f"{sorted(ALLOWED_MERGE_CADENCES)}"
+        )
+    if wl.one_over_t_gate not in ALLOWED_ONE_OVER_T_GATES:
+        raise ValueError(
+            f"wl.one_over_t_gate={wl.one_over_t_gate!r} not in "
+            f"{sorted(ALLOWED_ONE_OVER_T_GATES)}"
+        )
+    if wl.bp_stall_multiple <= 0:
+        raise ValueError(
+            f"wl.bp_stall_multiple must be > 0, got {wl.bp_stall_multiple}"
         )
     if wl.n_trials_per_walker <= 0:
         raise ValueError(

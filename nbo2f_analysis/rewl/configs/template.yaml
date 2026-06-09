@@ -25,6 +25,8 @@ wl:
   n_trials_per_walker: 20000000
   block_size_sweeps: 10
   trajectory_write_interval_sweeps: 100   # 0 disables trajectories
+  one_over_t_gate: "visit_once"      # OPTIONAL: "visit_once" (default) or "flatness"
+  bp_stall_multiple: 4.0             # OPTIONAL: only used when one_over_t_gate is "flatness"
 
 moves:
   - {type: pair_swap, weight: 0.1}

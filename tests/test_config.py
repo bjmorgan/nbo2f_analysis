@@ -133,6 +133,68 @@ checkpoint: {{filename: c.h5, interval_cycles: 0}}
     return p
 
 
+def _cfg_with_wl_keys(tmp_path, extra_wl_lines: str):
+    """Write a minimal valid config, appending lines to the ``wl`` block.
+
+    ``extra_wl_lines`` must already be indented to sit under ``wl:``.
+    """
+    p = tmp_path / "cfg.yaml"
+    p.write_text(f"""
+random_seed: 0
+system: {{n_sc: 3, ce: paircut9_5_5_ardr_n96}}
+windows:
+  energy_spacing: 0.1
+  list:
+    - [-10.0, -9.0, 1]
+    - [-9.5, -8.5, 1]
+wl:
+  flatness_limit: 0.8
+  fill_factor_limit: 1.0e-12
+  schedule: "1_over_t"
+  flatness_mode: "pooled"
+  merge_cadence: "at_halve"
+  n_trials_per_walker: 1000
+  block_size_sweeps: 10
+  trajectory_write_interval_sweeps: 0
+{extra_wl_lines}
+moves:
+  - {{type: pair_swap, weight: 0.1}}
+  - {{type: row_shift, weight: 0.2}}
+config_search: {{n_workers: 1, window_search_penalty: 2.0, walk_sweeps: 10, max_walks_per_window: 4}}
+checkpoint: {{filename: c.h5, interval_cycles: 0}}
+""")
+    return p
+
+
+def test_load_yaml_defaults_gate_knobs_when_absent():
+    # A config without the new keys reproduces today's visit_once schedule.
+    cfg = load_yaml(DATA / "L9_minimal.yaml")
+    assert cfg.wl.one_over_t_gate == "visit_once"
+    assert cfg.wl.bp_stall_multiple == 4.0
+
+
+def test_load_yaml_parses_flatness_gate(tmp_path):
+    p = _cfg_with_wl_keys(
+        tmp_path,
+        '  one_over_t_gate: "flatness"\n  bp_stall_multiple: 2.0',
+    )
+    cfg = load_yaml(p)
+    assert cfg.wl.one_over_t_gate == "flatness"
+    assert cfg.wl.bp_stall_multiple == 2.0
+
+
+def test_load_yaml_rejects_unknown_one_over_t_gate(tmp_path):
+    p = _cfg_with_wl_keys(tmp_path, '  one_over_t_gate: "nonsense"')
+    with pytest.raises(ValueError, match="one_over_t_gate"):
+        load_yaml(p)
+
+
+def test_load_yaml_rejects_non_positive_bp_stall_multiple(tmp_path):
+    p = _cfg_with_wl_keys(tmp_path, "  bp_stall_multiple: 0.0")
+    with pytest.raises(ValueError, match="bp_stall_multiple must be > 0"):
+        load_yaml(p)
+
+
 def test_load_yaml_parses_config_search_knobs(tmp_path):
     p = _cfg_with(
         tmp_path,

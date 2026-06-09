@@ -121,6 +121,8 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
         n_walkers_per_window=cfg.windows.walkers_per_window,
         flatness_mode=cfg.wl.flatness_mode,
         merge_cadence=cfg.wl.merge_cadence,
+        one_over_t_gate=cfg.wl.one_over_t_gate,
+        bp_stall_multiple=cfg.wl.bp_stall_multiple,
     )
     pt.attach_cycle_callback(WangLandauProgressPrinter(pt.pool, interval=10))
     if cfg.checkpoint.interval_cycles > 0:
