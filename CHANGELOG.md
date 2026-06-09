@@ -18,9 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Omitting them reproduces the previous `visit_once` schedule, so
   existing configs parse and behave unchanged. On resume the knobs are
   read back from the checkpoint rather than the config.
-- Requires `mchammer-pt` 0.21.0 or newer, which adds these arguments to
-  `process_pool`. The git dependency tracks `main`; ensure the installed
-  `mchammer-pt` is at least 0.21.0.
+- Requires `mchammer-pt` 0.21.0 or newer.
 
 ## [0.4.0] - 2026-06-04
 
