@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-09
+
+### Added
+
+- The run YAML's `wl` section accepts two optional knobs, forwarded to
+  `WangLandauParallelTempering.process_pool`: `one_over_t_gate`
+  (`"visit_once"`, the default, or `"flatness"`) selects the
+  halving-phase gate under the `1_over_t` schedule, and
+  `bp_stall_multiple` (default `4.0`) sets the stall threshold consulted
+  under the `"flatness"` gate. Both are validated at config load.
+  Omitting them reproduces the previous `visit_once` schedule, so
+  existing configs parse and behave unchanged. On resume the knobs are
+  read back from the checkpoint rather than the config.
+- Requires `mchammer-pt` 0.21.0 or newer.
+
 ## [0.4.0] - 2026-06-04
 
 ### Changed

@@ -133,6 +133,41 @@ checkpoint: {{filename: c.h5, interval_cycles: 0}}
     return p
 
 
+def test_load_yaml_defaults_gate_knobs_when_absent():
+    # A config without the new keys reproduces the visit_once schedule.
+    cfg = load_yaml(DATA / "L9_minimal.yaml")
+    assert cfg.wl.one_over_t_gate == "visit_once"
+    assert cfg.wl.bp_stall_multiple == 4.0
+
+
+def test_load_yaml_parses_flatness_gate(write_min_cfg):
+    p = write_min_cfg('  one_over_t_gate: "flatness"\n  bp_stall_multiple: 2.0')
+    cfg = load_yaml(p)
+    assert cfg.wl.one_over_t_gate == "flatness"
+    assert cfg.wl.bp_stall_multiple == 2.0
+
+
+def test_load_yaml_rejects_unknown_one_over_t_gate(write_min_cfg):
+    p = write_min_cfg('  one_over_t_gate: "nonsense"')
+    with pytest.raises(ValueError, match="one_over_t_gate"):
+        load_yaml(p)
+
+
+def test_load_yaml_rejects_non_positive_bp_stall_multiple(write_min_cfg):
+    p = write_min_cfg("  bp_stall_multiple: 0.0")
+    with pytest.raises(ValueError, match="bp_stall_multiple must be a finite"):
+        load_yaml(p)
+
+
+@pytest.mark.parametrize("value", [".nan", ".inf"])
+def test_load_yaml_rejects_non_finite_bp_stall_multiple(write_min_cfg, value):
+    # nan/inf slip past a bare ``<= 0`` check; reject them at config load
+    # rather than after the expensive starting-configuration search.
+    p = write_min_cfg(f"  bp_stall_multiple: {value}")
+    with pytest.raises(ValueError, match="bp_stall_multiple must be a finite"):
+        load_yaml(p)
+
+
 def test_load_yaml_parses_config_search_knobs(tmp_path):
     p = _cfg_with(
         tmp_path,
