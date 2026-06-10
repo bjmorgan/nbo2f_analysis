@@ -141,8 +141,11 @@ def load_yaml(path: str | Path) -> RewlConfig:
         window_entries.append(
             Window(lo=float(lo), hi=float(hi), walkers=int(walkers))
         )
-    if len(window_entries) < 1:
-        raise ValueError("windows.list must contain at least one window")
+    if len(window_entries) < 2:
+        raise ValueError(
+            f"windows.list must contain at least two windows for "
+            f"replica-exchange parallel tempering, got {len(window_entries)}"
+        )
     for i in range(1, len(window_entries)):
         prev = window_entries[i - 1]
         cur = window_entries[i]
