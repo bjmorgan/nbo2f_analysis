@@ -168,6 +168,24 @@ def test_load_yaml_rejects_non_finite_bp_stall_multiple(write_min_cfg, value):
         load_yaml(p)
 
 
+def test_load_yaml_defaults_one_over_t_entry_when_absent():
+    # A config without the key reproduces the window_clock entry policy.
+    cfg = load_yaml(DATA / "L9_minimal.yaml")
+    assert cfg.wl.one_over_t_entry == "window_clock"
+
+
+def test_load_yaml_parses_f_continuous_entry(write_min_cfg):
+    p = write_min_cfg('  one_over_t_entry: "f_continuous"')
+    cfg = load_yaml(p)
+    assert cfg.wl.one_over_t_entry == "f_continuous"
+
+
+def test_load_yaml_rejects_unknown_one_over_t_entry(write_min_cfg):
+    p = write_min_cfg('  one_over_t_entry: "nonsense"')
+    with pytest.raises(ValueError, match="one_over_t_entry"):
+        load_yaml(p)
+
+
 def test_load_yaml_parses_config_search_knobs(tmp_path):
     p = _cfg_with(
         tmp_path,

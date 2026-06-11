@@ -12,6 +12,7 @@ ALLOWED_SCHEDULES = {"1_over_t"}
 ALLOWED_FLATNESS_MODES = {"pooled", "per_walker"}
 ALLOWED_MERGE_CADENCES = {"at_halve", "never"}
 ALLOWED_ONE_OVER_T_GATES = {"visit_once", "flatness"}
+ALLOWED_ONE_OVER_T_ENTRIES = {"window_clock", "f_continuous"}
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class WlCfg:
     trajectory_write_interval_sweeps: int
     one_over_t_gate: str = "visit_once"
     bp_stall_multiple: float = 4.0
+    one_over_t_entry: str = "window_clock"
 
 
 @dataclass(frozen=True)
@@ -170,6 +172,7 @@ def load_yaml(path: str | Path) -> RewlConfig:
         ),
         one_over_t_gate=str(wl_raw.get("one_over_t_gate", "visit_once")),
         bp_stall_multiple=float(wl_raw.get("bp_stall_multiple", 4.0)),
+        one_over_t_entry=str(wl_raw.get("one_over_t_entry", "window_clock")),
     )
     if not (0.0 < wl.flatness_limit < 1.0):
         raise ValueError(
@@ -202,6 +205,11 @@ def load_yaml(path: str | Path) -> RewlConfig:
         raise ValueError(
             f"wl.bp_stall_multiple must be a finite positive number, "
             f"got {wl.bp_stall_multiple}"
+        )
+    if wl.one_over_t_entry not in ALLOWED_ONE_OVER_T_ENTRIES:
+        raise ValueError(
+            f"wl.one_over_t_entry={wl.one_over_t_entry!r} not in "
+            f"{sorted(ALLOWED_ONE_OVER_T_ENTRIES)}"
         )
     if wl.n_trials_per_walker <= 0:
         raise ValueError(

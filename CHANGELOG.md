@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-06-11
+
+### Added
+
+- The run YAML's `wl` section accepts an optional `one_over_t_entry`
+  knob, forwarded to `WangLandauParallelTempering.process_pool`. It
+  selects how a window's fill factor enters the `1/t` phase at the
+  switch: `"window_clock"` (the default) follows the
+  Belardinelli-Pereyra clock, with the fill factor jumping to `1/t`
+  at the phase switch; `"f_continuous"` records a schedule-clock
+  origin so the fill factor is continuous across the switch.
+  Validated at config load. Omitting it reproduces the previous
+  `window_clock` behaviour, so existing configs parse and behave
+  unchanged. On resume the knob is read back from the checkpoint
+  rather than the config.
+- Requires `mchammer-pt` main with `one_over_t_entry` support
+  (bjmorgan/mchammer-pt#50, merged after the 0.21.0 release).
+
 ## [0.5.0] - 2026-06-09
 
 ### Added
