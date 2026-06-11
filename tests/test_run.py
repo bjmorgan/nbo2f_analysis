@@ -14,19 +14,35 @@ class _StopAfterPool(Exception):
 
 
 @pytest.mark.parametrize(
-    "gate_lines, expected_gate, expected_multiple",
+    "wl_lines, expected",
     [
         # Explicit non-default knobs reach process_pool.
-        ('  one_over_t_gate: "flatness"\n  bp_stall_multiple: 2.0', "flatness", 2.0),
+        (
+            '  one_over_t_gate: "flatness"\n'
+            '  bp_stall_multiple: 2.0\n'
+            '  one_over_t_entry: "f_continuous"',
+            {
+                "one_over_t_gate": "flatness",
+                "bp_stall_multiple": 2.0,
+                "one_over_t_entry": "f_continuous",
+            },
+        ),
         # Keys omitted: the defaults are forwarded, so old configs behave
-        # unchanged (the PR's backward-compatibility promise).
-        ("", "visit_once", 4.0),
+        # unchanged.
+        (
+            "",
+            {
+                "one_over_t_gate": "visit_once",
+                "bp_stall_multiple": 4.0,
+                "one_over_t_entry": "window_clock",
+            },
+        ),
     ],
 )
-def test_run_forwards_gate_knobs_to_process_pool(
-    tmp_path, monkeypatch, write_min_cfg, gate_lines, expected_gate, expected_multiple
+def test_run_forwards_wl_knobs_to_process_pool(
+    tmp_path, monkeypatch, write_min_cfg, wl_lines, expected
 ):
-    cfg = load_yaml(write_min_cfg(gate_lines))
+    cfg = load_yaml(write_min_cfg(wl_lines))
     monkeypatch.chdir(tmp_path)
 
     captured: dict = {}
@@ -47,5 +63,5 @@ def test_run_forwards_gate_knobs_to_process_pool(
     with pytest.raises(_StopAfterPool):
         run_mod.run(cfg)
 
-    assert captured.get("one_over_t_gate") == expected_gate
-    assert captured.get("bp_stall_multiple") == expected_multiple
+    for key, value in expected.items():
+        assert captured.get(key) == value

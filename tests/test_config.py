@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from nbo2f_analysis.rewl.config import RewlConfig, load_yaml
+from nbo2f_analysis.rewl import config as rewl_config
+from nbo2f_analysis.rewl.config import RewlConfig, load_yaml, resolve_ce_path
 
 DATA = Path(__file__).parent / "data"
 
@@ -36,6 +37,15 @@ def test_load_yaml_parses_minimal_config():
     assert {m.type for m in cfg.moves.list} == {
         "pair_swap", "row_shift", "motif_shift", "chain_swap", "row_reflect",
     }
+
+
+def test_packaged_template_parses_and_resolves_ce():
+    # The template ships in the wheel for users to copy; a stale enum value
+    # or a renamed CE preset would otherwise surface only on a user's first
+    # `rewl run` from a copied template.
+    template = Path(rewl_config.__file__).parent / "configs" / "template.yaml"
+    cfg = load_yaml(template)
+    assert resolve_ce_path(cfg).is_file()
 
 
 def test_load_yaml_rejects_non_overlapping_windows(tmp_path):
@@ -165,6 +175,24 @@ def test_load_yaml_rejects_non_finite_bp_stall_multiple(write_min_cfg, value):
     # rather than after the expensive starting-configuration search.
     p = write_min_cfg(f"  bp_stall_multiple: {value}")
     with pytest.raises(ValueError, match="bp_stall_multiple must be a finite"):
+        load_yaml(p)
+
+
+def test_load_yaml_defaults_one_over_t_entry_when_absent():
+    # A config without the key reproduces the window_clock entry policy.
+    cfg = load_yaml(DATA / "L9_minimal.yaml")
+    assert cfg.wl.one_over_t_entry == "window_clock"
+
+
+def test_load_yaml_parses_f_continuous_entry(write_min_cfg):
+    p = write_min_cfg('  one_over_t_entry: "f_continuous"')
+    cfg = load_yaml(p)
+    assert cfg.wl.one_over_t_entry == "f_continuous"
+
+
+def test_load_yaml_rejects_unknown_one_over_t_entry(write_min_cfg):
+    p = write_min_cfg('  one_over_t_entry: "nonsense"')
+    with pytest.raises(ValueError, match="one_over_t_entry"):
         load_yaml(p)
 
 
