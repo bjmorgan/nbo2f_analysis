@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from nbo2f_analysis.rewl.config import RewlConfig, load_yaml
+from nbo2f_analysis.rewl import config as rewl_config
+from nbo2f_analysis.rewl.config import RewlConfig, load_yaml, resolve_ce_path
 
 DATA = Path(__file__).parent / "data"
 
@@ -36,6 +37,15 @@ def test_load_yaml_parses_minimal_config():
     assert {m.type for m in cfg.moves.list} == {
         "pair_swap", "row_shift", "motif_shift", "chain_swap", "row_reflect",
     }
+
+
+def test_packaged_template_parses_and_resolves_ce():
+    # The template ships in the wheel for users to copy; a stale enum value
+    # or a renamed CE preset would otherwise surface only on a user's first
+    # `rewl run` from a copied template.
+    template = Path(rewl_config.__file__).parent / "configs" / "template.yaml"
+    cfg = load_yaml(template)
+    assert resolve_ce_path(cfg).is_file()
 
 
 def test_load_yaml_rejects_non_overlapping_windows(tmp_path):

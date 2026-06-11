@@ -20,8 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `window_clock` behaviour, so existing configs parse and behave
   unchanged. On resume the knob is read back from the checkpoint
   rather than the config.
-- Requires `mchammer-pt` main with `one_over_t_entry` support
-  (bjmorgan/mchammer-pt#50, merged after the 0.21.0 release).
+- Requires `mchammer-pt` 0.22.0 or newer.
 
 ## [0.5.0] - 2026-06-09
 
