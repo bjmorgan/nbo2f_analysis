@@ -187,12 +187,12 @@ def test_resume_count_tracks_cumulative_walker_step(
     assert spy.run_calls == [50]  # target 100 - 50 done
 
 
-def test_resume_divides_by_checkpoint_block_size_not_config(
+def test_resume_uses_checkpoint_block_size(
     tmp_path, monkeypatch, write_min_cfg
 ):
     # n_done and the target both use the checkpoint's own block_size: a
     # block_size of 20 gives target 1000 // 20 = 50 and 600 // 20 = 30 done,
-    # so 20 remaining -- independent of the run config's block size.
+    # so 20 remaining.
     cfg = load_yaml(write_min_cfg(""))
     spy = _install_resume_stubs(
         monkeypatch, tmp_path, last_step=600, block_size=20
