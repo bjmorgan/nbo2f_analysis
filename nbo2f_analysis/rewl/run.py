@@ -180,9 +180,9 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
     # Count completed cycles from the restored walker step, which is
     # cumulative across resumes and correct for legacy padded
     # checkpoints. meta["block_size"] is the block size the walkers
-    # actually advanced with; completed_cycles raises if a stored step is
-    # not a multiple of it, catching a drifted config before it silently
-    # miscounts.
+    # actually advanced with; completed_cycles floor-divides the maximum
+    # walker step by it, so a walker that converged mid-block (and froze
+    # off a block boundary) still counts correctly.
     block_size = int(meta["block_size"])
     n_done = completed_cycles(containers, block_size)
     target_total_cycles = cfg.wl.n_trials_per_walker // block_size
@@ -211,7 +211,7 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
         pt.save_checkpoint(str(checkpoint_path))
         history = ExchangeHistory.concatenate(prior_history, pt.history)
     else:
-        print("Already at target; no additional cycles run.")
+        print("Already at or beyond target; no additional cycles run.")
         history = prior_history
 
     print("Writing analysis artefacts...")
