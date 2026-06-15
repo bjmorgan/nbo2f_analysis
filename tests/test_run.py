@@ -155,10 +155,13 @@ def test_resume_extra_cycles_overrides_auto_count(
     assert spy.run_calls == [7]
 
 
-def test_resume_rejects_inconsistent_step(
+def test_resume_tolerates_off_block_walker_step(
     tmp_path, monkeypatch, write_min_cfg
 ):
+    # A walker that converged mid-block freezes off a block boundary; resume
+    # must not abort. With last_step=55 and block_size=10, floor division
+    # gives 5 completed cycles, so it runs the remaining 95 of the 100 target.
     cfg = load_yaml(write_min_cfg(""))
-    _install_resume_stubs(monkeypatch, tmp_path, last_step=55)  # not / 10
-    with pytest.raises(ValueError, match="multiple of block_size"):
-        run_mod.resume(cfg)
+    spy = _install_resume_stubs(monkeypatch, tmp_path, last_step=55)
+    run_mod.resume(cfg)
+    assert spy.run_calls == [95]

@@ -15,9 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   target. Previously an under-target checkpoint reported completion and
   no-opped, breaking checkpoint-chaining; large-L production runs killed
   by walltime can now be resumed to convergence. The completed count is
-  divided by the checkpoint's own ``block_size``, so a resume with a
-  mismatched config is rejected rather than miscounted. The
-  ``--extra-cycles`` manual override is unchanged.
+  divided by the checkpoint's own ``block_size`` rather than the run
+  config's, so it stays correct across chained resumes and tolerates
+  walkers that converged mid-block. The ``--extra-cycles`` manual
+  override is unchanged.
 - Requires ``mchammer-pt`` 0.23.0 or newer (for ``completed_cycles`` and
   the trimmed-history checkpoints).
 
