@@ -15,7 +15,7 @@ os.environ.setdefault("PYMBAR_DISABLE_JAX", "1")
 
 from icet import ClusterExpansion
 from mchammer.calculators import ClusterExpansionCalculator
-from mchammer_pt import SeedSearchParams, WangLandauProgressPrinter
+from mchammer_pt import SeedSearchParams, WangLandauProgressPrinter, completed_cycles
 from mchammer_pt.contrib import CoordinatedCustomWangLandauEnsemble
 from mchammer_pt.wl import WangLandauParallelTempering
 
@@ -162,8 +162,7 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
 
     print(f"Loading CE from {resolve_ce_path(cfg)}")
     ce = ClusterExpansion.read(str(resolve_ce_path(cfg)))
-    _, n_atoms, _, ensemble_kwargs = build_moves_and_kwargs(cfg, ce)
-    block_size = n_atoms * cfg.wl.block_size_sweeps
+    _, _, _, ensemble_kwargs = build_moves_and_kwargs(cfg, ce)
 
     print(f"Resuming from {checkpoint_path}")
     pt = WangLandauParallelTempering.resume_process_pool(
@@ -177,8 +176,15 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
     # does NOT repopulate `pt._history` from the checkpoint, so
     # `pt.history` is None right after resume. Read it back directly
     # from the HDF5 file so we can concatenate it with the next segment.
-    prior_history, _containers, _meta = read_hdf5(str(checkpoint_path))
-    n_done = prior_history.energies_per_cycle.shape[0] - 1
+    prior_history, containers, meta = read_hdf5(str(checkpoint_path))
+    # Count completed cycles from the restored walker step, which is
+    # cumulative across resumes and correct for legacy padded
+    # checkpoints. meta["block_size"] is the block size the walkers
+    # actually advanced with; completed_cycles raises if a stored step is
+    # not a multiple of it, catching a drifted config before it silently
+    # miscounts.
+    block_size = int(meta["block_size"])
+    n_done = completed_cycles(containers, block_size)
     target_total_cycles = cfg.wl.n_trials_per_walker // block_size
     if extra_cycles is not None:
         n_extra = int(extra_cycles)
