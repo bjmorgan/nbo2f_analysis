@@ -199,3 +199,13 @@ def test_resume_uses_checkpoint_block_size(
     )
     run_mod.resume(cfg)
     assert spy.run_calls == [20]
+
+
+def test_resume_reports_cycle_status(tmp_path, monkeypatch, write_min_cfg, capsys):
+    # The resume status line reports the completed/target/remaining counts.
+    # (Flushing of this line -- so it survives block-buffered cluster logs --
+    # is not separately observable here; capsys captures buffered output too.)
+    cfg = load_yaml(write_min_cfg(""))
+    _install_resume_stubs(monkeypatch, tmp_path, last_step=600)  # 60 done
+    run_mod.resume(cfg)
+    assert "Cycles done=60, target=100, running 40 more." in capsys.readouterr().out
