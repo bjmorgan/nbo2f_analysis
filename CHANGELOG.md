@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-06-16
+
+### Fixed
+
+- The ``rewl`` driver's status lines (``Loading CE``, ``Resuming from``,
+  ``Cycles done=...``, ``REWL complete``, ``Done.``, etc.) are now flushed
+  on print. They go to stdout, which is block-buffered when redirected to a
+  file (as under SLURM), so a line printed just before a long stderr-only
+  phase -- notably the resume ``Cycles done=..., running N more.`` line
+  before the multi-hour ``pt.run`` loop -- previously sat unflushed in the
+  buffer until the process exited, and was lost entirely if the job hit
+  walltime. Flushing makes each status line appear in the log as it happens.
+
 ## [0.6.1] - 2026-06-15
 
 ### Fixed

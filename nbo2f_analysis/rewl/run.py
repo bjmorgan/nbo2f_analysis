@@ -29,6 +29,19 @@ from nbo2f_analysis.rewl.postprocess import write_all
 from nbo2f_analysis.rewl.search import find_all_window_configs
 
 
+def _status(*args: object) -> None:
+    """Print a run-status line, flushed immediately.
+
+    The status lines go to stdout, which is block-buffered when redirected
+    to a file (as under SLURM). A line printed just before a long
+    stderr-only phase (e.g. ``Cycles done=...`` before the multi-hour
+    ``pt.run`` loop) would otherwise sit unflushed in the buffer until the
+    process exits -- and be lost entirely if the job is killed at walltime.
+    Flushing makes each status line appear in the log as it happens.
+    """
+    print(*args, flush=True)
+
+
 def _build_ensemble_kwargs(cfg: RewlConfig, moves, n_atoms: int) -> dict:
     block_size = n_atoms * cfg.wl.block_size_sweeps
     # icet's BaseEnsemble does `step % trajectory_write_interval` unguarded
@@ -74,14 +87,14 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
             f"Use `rewl resume` to continue, or pass --force to overwrite."
         )
 
-    print(f"Loading CE from {resolve_ce_path(cfg)}")
+    _status(f"Loading CE from {resolve_ce_path(cfg)}")
     ce = ClusterExpansion.read(str(resolve_ce_path(cfg)))
 
     atoms_gs, n_atoms, _, ensemble_kwargs = build_moves_and_kwargs(cfg, ce)
     block_size = n_atoms * cfg.wl.block_size_sweeps
     n_cycles_target = cfg.wl.n_trials_per_walker // block_size
     n_windows = len(cfg.windows.list)
-    print(
+    _status(
         f"L={cfg.system.n_sc}: {n_atoms} atoms; "
         f"block={block_size} steps ({cfg.wl.block_size_sweeps} sweeps); "
         f"cycles target={n_cycles_target}; "
@@ -95,7 +108,7 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
         max_walks_per_window=cfg.config_search.max_walks_per_window,
         n_workers=cfg.config_search.n_workers,
     )
-    print("Finding starting configurations (parallel search)...")
+    _status("Finding starting configurations (parallel search)...")
     atoms_per_window = find_all_window_configs(
         ce=ce,
         n_sc=cfg.system.n_sc,
@@ -107,7 +120,7 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
         seed=cfg.random_seed,
     )
 
-    print("Constructing WangLandauParallelTempering (process pool)...")
+    _status("Constructing WangLandauParallelTempering (process pool)...")
     pt = WangLandauParallelTempering.process_pool(
         cluster_expansion=ce,
         atoms=atoms_per_window,
@@ -132,21 +145,21 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
             interval=cfg.checkpoint.interval_cycles,
         )
 
-    print(
+    _status(
         f"Running REWL: {n_cycles_target} cycles, "
         f"{block_size} steps/block, {n_windows} windows..."
     )
     t0 = time.perf_counter()
     pt.run(n_cycles=n_cycles_target)
     dt = time.perf_counter() - t0
-    print(f"REWL complete in {dt:.0f} s")
+    _status(f"REWL complete in {dt:.0f} s")
 
     # Final checkpoint guarantee (even if periodic writes disabled).
     pt.save_checkpoint(str(checkpoint_path))
 
-    print("Writing analysis artefacts...")
+    _status("Writing analysis artefacts...")
     write_all(pt, cfg)
-    print("Done.")
+    _status("Done.")
 
 
 def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
@@ -160,11 +173,11 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
             f"No checkpoint at {checkpoint_path}; use `rewl run` to start."
         )
 
-    print(f"Loading CE from {resolve_ce_path(cfg)}")
+    _status(f"Loading CE from {resolve_ce_path(cfg)}")
     ce = ClusterExpansion.read(str(resolve_ce_path(cfg)))
     _, _, _, ensemble_kwargs = build_moves_and_kwargs(cfg, ce)
 
-    print(f"Resuming from {checkpoint_path}")
+    _status(f"Resuming from {checkpoint_path}")
     pt = WangLandauParallelTempering.resume_process_pool(
         str(checkpoint_path),
         cluster_expansion=ce,
@@ -190,7 +203,7 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
         n_extra = int(extra_cycles)
     else:
         n_extra = max(0, target_total_cycles - n_done)
-    print(
+    _status(
         f"Cycles done={n_done}, target={target_total_cycles}, "
         f"running {n_extra} more."
     )
@@ -207,13 +220,13 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
         t0 = time.perf_counter()
         pt.run(n_cycles=n_extra)
         dt = time.perf_counter() - t0
-        print(f"REWL complete in {dt:.0f} s")
+        _status(f"REWL complete in {dt:.0f} s")
         pt.save_checkpoint(str(checkpoint_path))
         history = ExchangeHistory.concatenate(prior_history, pt.history)
     else:
-        print("Already at or beyond target; no additional cycles run.")
+        _status("Already at or beyond target; no additional cycles run.")
         history = prior_history
 
-    print("Writing analysis artefacts...")
+    _status("Writing analysis artefacts...")
     write_all(pt, cfg, history=history)
-    print("Done.")
+    _status("Done.")
