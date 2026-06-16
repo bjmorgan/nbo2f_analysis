@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-15
+
+### Fixed
+
+- ``rewl resume`` now counts completed cycles from the restored walker
+  MC step (via ``mchammer_pt.completed_cycles``) instead of the
+  pre-allocated per-cycle history shape, which always equalled the
+  target. Previously an under-target checkpoint reported completion and
+  no-opped, breaking checkpoint-chaining; large-L production runs killed
+  by walltime can now be resumed to convergence. The completed count is
+  divided by the checkpoint's own ``block_size`` rather than the run
+  config's, so it stays correct across chained resumes and tolerates
+  walkers that converged mid-block. The ``--extra-cycles`` manual
+  override is unchanged.
+- Requires ``mchammer-pt`` 0.23.0 or newer (for ``completed_cycles`` and
+  the trimmed-history checkpoints).
+
 ## [0.6.0] - 2026-06-11
 
 ### Added
