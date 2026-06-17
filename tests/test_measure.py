@@ -190,3 +190,20 @@ def test_status_reports_counts(tmp_path, monkeypatch, capsys):
         "Measurement cycles done=30, target=100, running 70 more."
         in capsys.readouterr().out
     )
+
+
+def test_cli_measure_dispatches(tmp_path, monkeypatch):
+    from nbo2f_analysis.rewl import cli
+
+    cfg_path = tmp_path / "cfg.yaml"
+    cfg_path.write_text(_BASE_CFG + _MEAS_BLOCK)
+    monkeypatch.chdir(tmp_path)
+
+    captured: dict = {}
+    monkeypatch.setattr(
+        "nbo2f_analysis.rewl.measure.measure",
+        lambda cfg, **k: captured.update(extra_cycles=k.get("extra_cycles")),
+    )
+    rc = cli.main(["measure", str(cfg_path), "--extra-cycles", "5"])
+    assert rc == 0
+    assert captured == {"extra_cycles": 5}
