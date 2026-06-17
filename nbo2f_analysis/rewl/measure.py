@@ -30,7 +30,12 @@ from nbo2f_analysis.rewl.config import RewlConfig, resolve_ce_path
 from nbo2f_analysis.rewl.run import _status, build_moves_and_kwargs
 
 
-def measure(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
+def measure(
+    cfg: RewlConfig,
+    *,
+    extra_cycles: int | None = None,
+    allow_kwargs_mismatch: bool = False,
+) -> None:
     """Run or resume a frozen-g measurement pass from a converged checkpoint.
 
     Reads the converged DOS checkpoint (``cfg.checkpoint.filename``) on the
@@ -39,6 +44,19 @@ def measure(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
     configured :class:`ChainOrderObserver`, and advances the frozen-g walk
     until the measurement cycle budget (``cfg.measurement.n_measure_cycles``)
     is reached. ``extra_cycles`` overrides the automatic remainder.
+
+    Args:
+        cfg: The REWL configuration; must include a ``measurement`` section.
+        extra_cycles: Run this many measurement cycles instead of the
+            automatic remainder to the budget.
+        allow_kwargs_mismatch: Forwarded to
+            ``measure_from_checkpoint_process_pool``. When True, an
+            ensemble-kwargs hash mismatch against the checkpoint is
+            downgraded from an error to a warning (the CE-identity check
+            stays strict). Needed to measure a checkpoint written in a
+            different software environment -- e.g. a cluster-written DOS
+            checkpoint measured locally -- where the move objects pickle to
+            different bytes despite identical physics.
 
     Raises:
         RuntimeError: if ``cfg`` has no ``measurement`` section, or if the
@@ -95,6 +113,7 @@ def measure(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
         cluster_expansion=ce,
         ensemble_cls=CoordinatedCustomWangLandauEnsemble,
         ensemble_kwargs=ensemble_kwargs,
+        allow_kwargs_mismatch=allow_kwargs_mismatch,
     )
     observer = build_chain_order_observer(
         cfg.system.n_sc,

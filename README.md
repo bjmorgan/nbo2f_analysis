@@ -65,6 +65,13 @@ and resumes/chains off it, so statistics build up across jobs; restart by
 deleting that checkpoint. It requires a `measurement` section in the
 config (see the template).
 
+To measure a checkpoint written on a different machine (e.g. a
+cluster-written DOS checkpoint measured on a workstation), pass
+`--allow-kwargs-mismatch`: the ensemble-kwargs hash embeds the move
+objects' pickled bytes, which differ across Python/numpy/platform even
+when the physics is identical, so the (strict) check is downgraded to a
+warning. The CE-identity check is unaffected.
+
 The canonical reduction is a separate manual step, run from job scripts
 via the `mchammer-pt` console scripts:
 

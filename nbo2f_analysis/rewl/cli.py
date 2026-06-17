@@ -53,7 +53,11 @@ def _cmd_measure(args) -> int:
     _maybe_chdir(args.out_dir)
     cfg = _load_and_override(args)
     from nbo2f_analysis.rewl.measure import measure
-    measure(cfg, extra_cycles=args.extra_cycles)
+    measure(
+        cfg,
+        extra_cycles=args.extra_cycles,
+        allow_kwargs_mismatch=args.allow_kwargs_mismatch,
+    )
     return 0
 
 
@@ -105,6 +109,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     meas_p.add_argument(
         "--out-dir", default=None, help="Run directory (default: CWD).",
+    )
+    meas_p.add_argument(
+        "--allow-kwargs-mismatch", action="store_true",
+        help="Downgrade an ensemble-kwargs hash mismatch against the "
+             "checkpoint to a warning (CE-identity stays strict). Needed to "
+             "measure a checkpoint written in a different software "
+             "environment (e.g. a cluster checkpoint measured locally).",
     )
     meas_p.set_defaults(func=_cmd_measure)
 

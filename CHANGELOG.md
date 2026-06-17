@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An optional `measurement` config section (checkpoint filename, observer
   interval in MC trial steps, measurement cycle budget, checkpoint
   cadence, and the required list of order parameters to record).
+- `rewl measure --allow-kwargs-mismatch`, forwarded to mchammer-pt's
+  measurement loader, downgrades an ensemble-kwargs hash mismatch against
+  the checkpoint to a warning (the CE-identity check stays strict). This
+  is needed to measure a checkpoint written in a different software
+  environment -- e.g. a cluster-written DOS checkpoint measured on a
+  workstation -- where the move objects pickle to different bytes despite
+  identical physics. Requires mchammer-pt with the
+  `allow_kwargs_mismatch` opt-in.
 
 ### Notes
 

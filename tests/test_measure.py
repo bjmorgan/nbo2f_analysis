@@ -202,8 +202,57 @@ def test_cli_measure_dispatches(tmp_path, monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
         "nbo2f_analysis.rewl.measure.measure",
-        lambda cfg, **k: captured.update(extra_cycles=k.get("extra_cycles")),
+        lambda cfg, **k: captured.update(k),
     )
     rc = cli.main(["measure", str(cfg_path), "--extra-cycles", "5"])
     assert rc == 0
-    assert captured == {"extra_cycles": 5}
+    assert captured == {"extra_cycles": 5, "allow_kwargs_mismatch": False}
+
+
+def _capture_loader_kwargs(monkeypatch, spy):
+    """Replace the frozen-g loader with one that records its kwargs."""
+    captured: dict = {}
+
+    def capture(*a, **k):
+        captured.update(k)
+        return spy
+
+    monkeypatch.setattr(
+        measure_mod.WangLandauParallelTempering,
+        "measure_from_checkpoint_process_pool",
+        capture,
+    )
+    return captured
+
+
+def test_allow_kwargs_mismatch_forwarded_to_loader(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    spy = _install(monkeypatch, tmp_path, dos_step=500)
+    captured = _capture_loader_kwargs(monkeypatch, spy)
+    measure_mod.measure(cfg, allow_kwargs_mismatch=True)
+    assert captured.get("allow_kwargs_mismatch") is True
+
+
+def test_allow_kwargs_mismatch_defaults_false(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    spy = _install(monkeypatch, tmp_path, dos_step=500)
+    captured = _capture_loader_kwargs(monkeypatch, spy)
+    measure_mod.measure(cfg)
+    assert captured.get("allow_kwargs_mismatch") is False
+
+
+def test_cli_measure_forwards_allow_kwargs_mismatch(tmp_path, monkeypatch):
+    from nbo2f_analysis.rewl import cli
+
+    cfg_path = tmp_path / "cfg.yaml"
+    cfg_path.write_text(_BASE_CFG + _MEAS_BLOCK)
+    monkeypatch.chdir(tmp_path)
+
+    captured: dict = {}
+    monkeypatch.setattr(
+        "nbo2f_analysis.rewl.measure.measure",
+        lambda cfg, **k: captured.update(k),
+    )
+    rc = cli.main(["measure", str(cfg_path), "--allow-kwargs-mismatch"])
+    assert rc == 0
+    assert captured.get("allow_kwargs_mismatch") is True
