@@ -1,0 +1,323 @@
+"""NbO2F chain-ordering observer for frozen-g REWL measurement.
+
+Provides :class:`ChainOrderObserver`, an mchammer ``BaseObserver`` that
+evaluates the NbO2F order parameters used to locate and characterise the
+chirality-emergence transition, and :func:`build_chain_order_observer`,
+which loads the chiral-orbit references the observer needs from the
+bundled package data.
+
+The observer is attached to a frozen-g REWL measurement run via
+``WangLandauParallelTempering.record_observable``. The per-replica
+recorders accumulate ``count``/``sum``/``sum2``/``sum4`` of the requested
+scalars per energy bin; downstream stitching and reweighting turn those
+moments into canonical ``<O>(T)`` and Binder cumulants.
+
+``chi_11`` and ``closest_chi`` are recorded *signed*: chirality is a
+Z2-symmetric broken-symmetry order parameter (``<chi> ~ 0`` in both
+phases), so the magnitude and Binder information live in the even moments
+the recorder accumulates.
+"""
+from __future__ import annotations
+
+from itertools import permutations
+
+import numpy as np
+from ase import Atoms
+from chainorder import SublatticeOccupation, order_params
+from mchammer.observers.base_observer import BaseObserver
+
+from nbo2f_analysis.ce_tools import cis_fraction, load_orbit_rep, nbo4f2_fraction
+
+# Recordable order parameters. ``closest_orbit`` (a categorical orbit
+# label) is excluded: its sum/sum2/sum4 moments would be meaningless.
+ALLOWED_OPS: frozenset[str] = frozenset({
+    "chi_11", "closest_chi", "closest_sim", "icoh_global",
+    "icoh_nn", "oof_amp", "cis_frac", "nbo4f2_frac",
+})
+
+# Order parameters that require the (expensive) per-orbit similarity loop.
+_SIMILARITY_OPS: frozenset[str] = frozenset({
+    "chi_11", "closest_chi", "closest_sim",
+})
+
+_N_ORBITS = 12
+
+# Type alias for the per-orbit reference store: label -> (proper, improper).
+OrbitRefs = dict[str, tuple[list[np.ndarray], list[np.ndarray]]]
+
+
+def _apply_spacegroup_op(
+    occ: np.ndarray, perm: tuple[int, ...], signs: tuple[int, ...],
+) -> np.ndarray:
+    """Apply a cubic space-group operation to an anion-sublattice occupation.
+
+    The anion sublattice has three edge-midpoint sub-lattices. Sublattice
+    *s* sits at half-integer coordinate along axis *s* and integer
+    coordinates along the other two. A rotation (``perm``, ``signs``)
+    permutes and possibly negates the axes; the half-integer vs integer
+    distinction means negation maps differently depending on whether the
+    coordinate is half-integer (``i -> N-1-i``) or integer (``j -> -j mod
+    N``).
+
+    Args:
+        occ: Occupation array, shape ``(3, N, N, N)``.
+        perm: Axis permutation -- output axis *d* comes from input axis
+            ``perm[d]``.
+        signs: Per-axis sign flip (+1 or -1).
+
+    Returns:
+        Transformed occupation array, same shape.
+    """
+    N = occ.shape[1]
+    result = np.empty_like(occ)
+    for s_new in range(3):
+        s_old = perm[s_new]
+        for i in range(N):
+            for j in range(N):
+                for k in range(N):
+                    new = (i, j, k)
+                    old = [0, 0, 0]
+                    for d in range(3):
+                        src = perm[d]
+                        if signs[d] == 1:
+                            old[src] = new[d]
+                        elif src == s_old:
+                            old[src] = (N - 1 - new[d]) % N
+                        else:
+                            old[src] = (-new[d]) % N
+                    result[s_new, i, j, k] = occ[s_old, old[0], old[1], old[2]]
+    return result
+
+
+def _generate_orbit_references(n_sc_orbit: int = 3) -> OrbitRefs:
+    """Pre-compute symmetry-distinct sub-cell images for all 12 chiral orbits.
+
+    For each of the 12 bundled orbit representatives, applies all 48
+    rotations of the cubic parent (24 proper + 24 improper) combined with
+    all lattice translations within the ``n_sc_orbit`` cell, then
+    deduplicates. Representatives are loaded from the package data
+    directory via :func:`nbo2f_analysis.ce_tools.load_orbit_rep`.
+
+    Args:
+        n_sc_orbit: Sub-cell size of the orbit representatives. Defaults to
+            3 (period-3 ordering).
+
+    Returns:
+        Dict mapping orbit label (``"00"``..``"11"``) to
+        ``(proper, improper)`` lists of
+        ``(3, n_sc_orbit, n_sc_orbit, n_sc_orbit)`` occupation arrays.
+        Proper images preserve handedness; improper images are the
+        enantiomer.
+    """
+    rots: list[tuple[tuple[int, ...], tuple[int, int, int], int]] = []
+    for perm in permutations((0, 1, 2)):
+        for sx in (1, -1):
+            for sy in (1, -1):
+                for sz in (1, -1):
+                    signs = (sx, sy, sz)
+                    p = list(perm)
+                    parity = sum(
+                        1 for i in range(3) for j in range(i + 1, 3)
+                        if p[i] > p[j]
+                    )
+                    det = (-1) ** parity * sx * sy * sz
+                    rots.append((perm, signs, det))
+
+    result: OrbitRefs = {}
+    for index in range(_N_ORBITS):
+        atoms = load_orbit_rep(index)
+        occ = SublatticeOccupation.from_atoms(
+            atoms, N=n_sc_orbit, species="F",
+        ).occupation
+        N = occ.shape[1]
+        seen_p: set[bytes] = set()
+        seen_i: set[bytes] = set()
+        proper: list[np.ndarray] = []
+        improper: list[np.ndarray] = []
+        for perm, signs, det in rots:
+            rotated = _apply_spacegroup_op(occ, perm, signs)
+            for tx in range(N):
+                for ty in range(N):
+                    for tz in range(N):
+                        img = np.roll(
+                            np.roll(
+                                np.roll(rotated, tx, axis=1), ty, axis=2,
+                            ),
+                            tz, axis=3,
+                        )
+                        key = img.tobytes()
+                        if det == 1 and key not in seen_p:
+                            seen_p.add(key)
+                            proper.append(img)
+                        elif det == -1 and key not in seen_i:
+                            seen_i.add(key)
+                            improper.append(img)
+        result[f"{index:02d}"] = (proper, improper)
+    return result
+
+
+class ChainOrderObserver(BaseObserver):
+    """Observe NbO2F chain-ordering diagnostics and chiral similarity.
+
+    Per observation, computes (averaged over the three chain directions
+    where applicable):
+
+    - ``oof_amp``: mean period-3 Fourier amplitude across chains.
+    - ``icoh_nn``: nearest-neighbour inter-chain phase coherence.
+    - ``icoh_global``: global inter-chain phase coherence.
+    - ``cis_frac``: fraction of Nb with cis F coordination.
+    - ``nbo4f2_frac``: fraction of Nb with the local NbO4F2 stoichiometry.
+    - ``chi_11``: signed enantiomeric similarity to orbit 11 (the observed
+      broken-symmetry ground state), ``P_max - I_max`` over proper vs
+      improper tilings.
+    - ``closest_sim``: maximum similarity to any of the 12 orbits.
+    - ``closest_chi``: signed enantiomeric similarity of the closest orbit.
+
+    ``get_observable`` returns only the order parameters named in ``ops``.
+    The structure must be in stable Nb-first ordering (as produced by
+    :func:`nbo2f_analysis.ce_tools.atoms_from_f_mask_stable` /
+    ``build_tiled_groundstate_atoms``): the cis/NbO4F2 branch reads
+    ``structure.numbers[n_sc**3:]``.
+
+    Args:
+        n_sc: Supercell size (must be a multiple of ``n_sc_orbit``).
+        interval: Observation interval in MC trial steps.
+        orbit_refs: Per-orbit reference store, as returned by
+            :func:`_generate_orbit_references`.
+        ops: Order parameters to emit; each must be in :data:`ALLOWED_OPS`.
+        n_sc_orbit: Sub-cell size of the orbit representatives. Must divide
+            ``n_sc``. Defaults to 3.
+
+    Raises:
+        ValueError: if ``n_sc`` is not a multiple of ``n_sc_orbit``, if
+            ``ops`` is empty, or if ``ops`` contains a name outside
+            :data:`ALLOWED_OPS`.
+    """
+
+    def __init__(
+        self,
+        n_sc: int,
+        interval: int,
+        orbit_refs: OrbitRefs,
+        ops: tuple[str, ...],
+        n_sc_orbit: int = 3,
+    ) -> None:
+        if n_sc % n_sc_orbit != 0:
+            raise ValueError(
+                f"n_sc ({n_sc}) must be a multiple of n_sc_orbit "
+                f"({n_sc_orbit})"
+            )
+        ops = tuple(ops)
+        if not ops:
+            raise ValueError("ops must be a non-empty sequence")
+        unknown = set(ops) - ALLOWED_OPS
+        if unknown:
+            raise ValueError(
+                f"ops {sorted(unknown)} not in ALLOWED_OPS "
+                f"{sorted(ALLOWED_OPS)}"
+            )
+        super().__init__(return_type=dict, interval=interval, tag="ChainOrder")
+        self._n_sc = n_sc
+        self._n_sc_orbit = n_sc_orbit
+        self._tile = n_sc // n_sc_orbit
+        self._fft_idx = n_sc // 3
+        self._orbit_refs = orbit_refs
+        self._n_anion = 3 * n_sc**3
+        self._ops = ops
+        self._needs_similarity = bool(set(ops) & _SIMILARITY_OPS)
+
+    def _per_cell_counts(self, occ_array: np.ndarray) -> np.ndarray:
+        """Sum of '1' entries per sub-cell position across all tile blocks."""
+        n_o = self._n_sc_orbit
+        t = self._tile
+        return (
+            occ_array.reshape(3, t, n_o, t, n_o, t, n_o)
+            .transpose(0, 2, 4, 6, 1, 3, 5)
+            .sum(axis=(4, 5, 6))
+        )
+
+    def _best_similarity(
+        self,
+        counts1: np.ndarray,
+        counts0: np.ndarray,
+        refs: list[np.ndarray],
+    ) -> float:
+        best = 0
+        for ref in refs:
+            sim = int(np.where(ref, counts1, counts0).sum())
+            if sim > best:
+                best = sim
+        return best / self._n_anion
+
+    def get_observable(self, structure: Atoms) -> dict[str, float]:
+        """Evaluate the requested order parameters on ``structure``."""
+        occ = SublatticeOccupation.from_atoms(
+            structure, N=self._n_sc, species="F",
+        )
+        oof_amps, icoh_nns, icoh_globals = [], [], []
+        for direction in (occ.x, occ.y, occ.z):
+            fft = order_params.chain_fft(direction)
+            oof_amps.append(float(np.abs(fft[..., self._fft_idx]).mean()))
+
+            G = order_params.inter_chain_correlation(direction, period=3)
+            nn = (
+                np.abs(G[1, 0]) + np.abs(G[0, 1])
+                + np.abs(G[-1, 0]) + np.abs(G[0, -1])
+            ) / 4
+            off_origin = np.ones_like(G, dtype=bool)
+            off_origin[0, 0] = False
+            icoh_nns.append(float(nn))
+            icoh_globals.append(float(np.abs(G[off_origin]).mean()))
+
+        f_mask = structure.numbers[self._n_sc**3:] == 9
+        computed: dict[str, float] = {
+            "oof_amp": float(np.mean(oof_amps)),
+            "icoh_nn": float(np.mean(icoh_nns)),
+            "icoh_global": float(np.mean(icoh_globals)),
+            "cis_frac": float(cis_fraction(f_mask, self._n_sc)),
+            "nbo4f2_frac": float(nbo4f2_fraction(f_mask, self._n_sc)),
+        }
+        if self._needs_similarity:
+            counts1 = self._per_cell_counts(occ.occupation)
+            counts0 = self._tile**3 - counts1
+            best_sim = 0.0
+            best_p = 0.0
+            best_i = 0.0
+            for label, (proper, improper) in self._orbit_refs.items():
+                p_max = self._best_similarity(counts1, counts0, proper)
+                i_max = self._best_similarity(counts1, counts0, improper)
+                if label == "11":
+                    computed["chi_11"] = p_max - i_max
+                if p_max > best_sim or i_max > best_sim:
+                    best_p = p_max
+                    best_i = i_max
+                    best_sim = max(p_max, i_max)
+            computed["closest_sim"] = best_sim
+            computed["closest_chi"] = best_p - best_i
+        return {k: computed[k] for k in self._ops}
+
+
+def build_chain_order_observer(
+    n_sc: int,
+    interval: int,
+    ops: tuple[str, ...],
+    n_sc_orbit: int = 3,
+) -> ChainOrderObserver:
+    """Build a :class:`ChainOrderObserver`, loading orbit references.
+
+    The chiral-orbit references are built once from the bundled package
+    data; the returned observer is picklable and ready to attach via
+    ``record_observable``.
+
+    Args:
+        n_sc: Supercell size (must be a multiple of ``n_sc_orbit``).
+        interval: Observation interval in MC trial steps.
+        ops: Order parameters to record; each must be in
+            :data:`ALLOWED_OPS`.
+        n_sc_orbit: Orbit-representative sub-cell size. Defaults to 3.
+
+    Returns:
+        A configured :class:`ChainOrderObserver`.
+    """
+    orbit_refs = _generate_orbit_references(n_sc_orbit=n_sc_orbit)
+    return ChainOrderObserver(n_sc, interval, orbit_refs, ops, n_sc_orbit=n_sc_orbit)
