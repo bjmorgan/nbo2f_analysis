@@ -46,3 +46,13 @@ config_search:
 checkpoint:
   filename: rewl_state.h5
   interval_cycles: 1000              # 0 disables periodic writes; final always emits
+
+# OPTIONAL: structural-measurement pass (`rewl measure`). Omit this whole
+# section for a DOS-only run. Reweighting to <O>(T)/Binder is a separate
+# manual step (see README).
+measurement:
+  checkpoint_filename: rewl_measure.h5    # MUST differ from checkpoint.filename
+  observer_interval: 648                  # MC trial steps/observation (3 * n_sc**3 = one anion sweep at n_sc=6)
+  n_measure_cycles: 2000                  # measurement cycle budget
+  checkpoint_interval_cycles: 100         # 0 disables periodic writes; final always emits
+  ops: [chi_11, closest_chi, closest_sim, icoh_global, icoh_nn, oof_amp, cis_frac, nbo4f2_frac]

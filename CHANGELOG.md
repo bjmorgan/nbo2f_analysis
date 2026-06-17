@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-17
+
+### Added
+
+- `rewl measure`: a frozen-g structural-measurement pass that records the
+  NbO2F order parameters as microcanonical moments on a converged REWL
+  checkpoint. It loads the checkpoint in mchammer-pt's frozen-g
+  measurement mode (g(E) held fixed, coordinator disabled), attaches a
+  `ChainOrderObserver` via `record_observable`, and runs a configured
+  number of measurement cycles. It writes its own checkpoint (distinct
+  from the DOS checkpoint) and resumes/chains off it via the same
+  `completed_cycles`-based accounting the DOS resume path uses, with the
+  DOS checkpoint's completed-cycle count subtracted as the baseline.
+- `nbo2f_analysis.chain_order_observer`: the `ChainOrderObserver`
+  (an mchammer `BaseObserver`) and `build_chain_order_observer`, lifted
+  from the data-repo PT script and loading their chiral-orbit references
+  from the bundled package data. The recordable order parameters are
+  `chi_11`, `closest_chi`, `closest_sim`, `icoh_global`, `icoh_nn`,
+  `oof_amp`, `cis_frac` and `nbo4f2_frac`; `chi_11`/`closest_chi` are
+  recorded signed for Binder-cumulant analysis.
+- An optional `measurement` config section (checkpoint filename, observer
+  interval in MC trial steps, measurement cycle budget, checkpoint
+  cadence, and the required list of order parameters to record).
+
+### Notes
+
+- The canonical reduction (DOS stitch, observable stitch, observable
+  reweight to `<O>(T)` and Binder cumulants) stays a manual step run via
+  the `mchammer-pt-stitch`, `mchammer-pt-stitch-observables` and
+  `mchammer-pt-reweight-observables` console scripts, mirroring the DOS
+  path. The `measure` command itself only produces the measurement
+  checkpoint and its moments.
+
 ## [0.6.2] - 2026-06-16
 
 ### Fixed
