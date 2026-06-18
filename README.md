@@ -42,6 +42,7 @@ Verify the editable installs are intact afterwards with
     rewl run         [--seed N] [--out-dir DIR] [--force] <config.yaml>
     rewl resume      [--extra-cycles N] [--out-dir DIR] <config.yaml>
     rewl postprocess [--out-dir DIR] <config.yaml>
+    rewl measure     [--extra-cycles N] [--out-dir DIR] <config.yaml>
 
 The driver writes the checkpoint (`rewl_state.h5`), three run-summary
 CSVs (`convergence.csv`, `exchange_rates.csv`,
@@ -54,3 +55,29 @@ are separate post-processing steps provided by `mchammer-pt`:
 
 See `nbo2f_analysis/rewl/configs/template.yaml` for the full config
 schema.
+
+### Structural measurement
+
+`rewl measure <config>` runs a frozen-g measurement pass on a converged
+REWL checkpoint, recording the NbO2F order parameters as microcanonical
+moments. It writes its own checkpoint (`measurement.checkpoint_filename`)
+and resumes/chains off it, so statistics build up across jobs; restart by
+deleting that checkpoint. It requires a `measurement` section in the
+config (see the template).
+
+To measure a checkpoint written on a different machine (e.g. a
+cluster-written DOS checkpoint measured on a workstation), pass
+`--allow-kwargs-mismatch`: the ensemble-kwargs hash embeds the move
+objects' pickled bytes, which differ across Python/numpy/platform even
+when the physics is identical, so the (strict) check is downgraded to a
+warning. The CE-identity check is unaffected.
+
+The canonical reduction is a separate manual step, run from job scripts
+via the `mchammer-pt` console scripts:
+
+    mchammer-pt-stitch rewl_state.h5 -o dos.csv
+    mchammer-pt-stitch-observables rewl_measure.h5 -o observables/
+    mchammer-pt-reweight-observables observables/ dos.csv --T-min 350 --T-max 600 --T-step 1 -o canonical/
+
+The reweight emits a coverage warning if the sampled bins miss canonical
+weight at the requested temperatures.

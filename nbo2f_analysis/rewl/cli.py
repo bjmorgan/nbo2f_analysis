@@ -1,4 +1,4 @@
-"""argparse CLI for the REWL driver: `rewl run|resume|postprocess`."""
+"""argparse CLI for the REWL driver: `rewl run|resume|postprocess|measure`."""
 from __future__ import annotations
 
 import argparse
@@ -49,6 +49,18 @@ def _cmd_postprocess(args) -> int:
     return 0
 
 
+def _cmd_measure(args) -> int:
+    _maybe_chdir(args.out_dir)
+    cfg = _load_and_override(args)
+    from nbo2f_analysis.rewl.measure import measure
+    measure(
+        cfg,
+        extra_cycles=args.extra_cycles,
+        allow_kwargs_mismatch=args.allow_kwargs_mismatch,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="rewl",
@@ -82,6 +94,30 @@ def build_parser() -> argparse.ArgumentParser:
     pp_p.add_argument("--out-dir", default=None,
                       help="Run directory (default: CWD).")
     pp_p.set_defaults(func=_cmd_postprocess)
+
+    meas_p = sub.add_parser(
+        "measure",
+        help="Frozen-g measurement pass on a converged checkpoint.",
+    )
+    meas_p.add_argument(
+        "config", type=Path,
+        help="Path to YAML config (must include a measurement section).",
+    )
+    meas_p.add_argument(
+        "--extra-cycles", type=int, default=None,
+        help="Run N more measurement cycles beyond the measurement checkpoint.",
+    )
+    meas_p.add_argument(
+        "--out-dir", default=None, help="Run directory (default: CWD).",
+    )
+    meas_p.add_argument(
+        "--allow-kwargs-mismatch", action="store_true",
+        help="Downgrade an ensemble-kwargs hash mismatch against the "
+             "checkpoint to a warning (CE-identity stays strict). Needed to "
+             "measure a checkpoint written in a different software "
+             "environment (e.g. a cluster checkpoint measured locally).",
+    )
+    meas_p.set_defaults(func=_cmd_measure)
 
     return p
 

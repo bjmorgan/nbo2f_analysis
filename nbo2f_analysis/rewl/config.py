@@ -84,6 +84,15 @@ class CheckpointCfg:
 
 
 @dataclass(frozen=True)
+class MeasurementCfg:
+    checkpoint_filename: str
+    observer_interval: int
+    n_measure_cycles: int
+    checkpoint_interval_cycles: int
+    ops: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RewlConfig:
     random_seed: int
     system: SystemCfg
@@ -92,6 +101,7 @@ class RewlConfig:
     moves: MovesCfg
     config_search: ConfigSearchCfg
     checkpoint: CheckpointCfg
+    measurement: MeasurementCfg | None = None
     source_path: Path = field(default=Path("."))
 
 
@@ -320,6 +330,68 @@ def load_yaml(path: str | Path) -> RewlConfig:
             f"got {ckpt.interval_cycles}"
         )
 
+    measurement_raw = raw.get("measurement")
+    measurement: MeasurementCfg | None = None
+    if measurement_raw is not None:
+        # Lazy import: chain_order_observer pulls chainorder/mchammer/ase,
+        # so only load it when a measurement section is present -- keeps
+        # load_yaml cheap for DOS-only configs.
+        from nbo2f_analysis.chain_order_observer import ALLOWED_OPS
+
+        ckpt_fn = str(measurement_raw["checkpoint_filename"])
+        if not ckpt_fn:
+            raise ValueError(
+                "measurement.checkpoint_filename must be non-empty"
+            )
+        if ckpt_fn == ckpt.filename:
+            raise ValueError(
+                f"measurement.checkpoint_filename ({ckpt_fn!r}) must differ "
+                f"from checkpoint.filename"
+            )
+        observer_interval = int(measurement_raw["observer_interval"])
+        if observer_interval <= 0:
+            raise ValueError(
+                f"measurement.observer_interval must be > 0, "
+                f"got {observer_interval}"
+            )
+        n_measure_cycles = int(measurement_raw["n_measure_cycles"])
+        if n_measure_cycles <= 0:
+            raise ValueError(
+                f"measurement.n_measure_cycles must be > 0, "
+                f"got {n_measure_cycles}"
+            )
+        ckpt_iv = int(measurement_raw["checkpoint_interval_cycles"])
+        if ckpt_iv < 0:
+            raise ValueError(
+                f"measurement.checkpoint_interval_cycles must be >= 0, "
+                f"got {ckpt_iv}"
+            )
+        ops_raw = measurement_raw.get("ops")
+        if ops_raw is None:
+            raise ValueError("measurement.ops is required")
+        if not isinstance(ops_raw, list) or not ops_raw:
+            raise ValueError(
+                f"measurement.ops must be a non-empty list, got {ops_raw!r}"
+            )
+        ops = tuple(str(o) for o in ops_raw)
+        if len(set(ops)) != len(ops):
+            raise ValueError(
+                f"measurement.ops contains duplicates: {ops}"
+            )
+        unknown = set(ops) - ALLOWED_OPS
+        if unknown:
+            raise ValueError(
+                f"measurement.ops {sorted(unknown)} not in ALLOWED_OPS "
+                f"{sorted(ALLOWED_OPS)}"
+            )
+        measurement = MeasurementCfg(
+            checkpoint_filename=ckpt_fn,
+            observer_interval=observer_interval,
+            n_measure_cycles=n_measure_cycles,
+            checkpoint_interval_cycles=ckpt_iv,
+            ops=ops,
+        )
+
     return RewlConfig(
         random_seed=int(raw["random_seed"]),
         system=system,
@@ -328,6 +400,7 @@ def load_yaml(path: str | Path) -> RewlConfig:
         moves=moves_cfg,
         config_search=cs,
         checkpoint=ckpt,
+        measurement=measurement,
         source_path=path,
     )
 
