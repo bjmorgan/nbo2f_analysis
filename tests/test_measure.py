@@ -57,6 +57,7 @@ class _SpyPT:
         self.run_calls: list[int] = []
         self.save_calls = 0
         self.recorded: list[object] = []
+        self.checkpoint_writer_attached = False
 
     def record_observable(self, observer):
         self.recorded.append(observer)
@@ -65,7 +66,7 @@ class _SpyPT:
         pass
 
     def attach_checkpoint_writer(self, *a, **k):
-        pass
+        self.checkpoint_writer_attached = True
 
     def run(self, n_cycles):
         self.run_calls.append(n_cycles)
@@ -128,6 +129,70 @@ def test_first_run_loads_dos_and_runs_full_budget(tmp_path, monkeypatch):
     assert spy.run_calls == [100]
     assert spy.save_calls == 1
     assert len(spy.recorded) == 1
+    assert spy.checkpoint_writer_attached is True  # config has interval 10
+
+
+def test_resume_raises_when_measurement_predates_dos_baseline(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    # dos baseline 50; meas total 30 -> meas_done -20: inconsistent pairing.
+    _install(monkeypatch, tmp_path, dos_step=500, meas_step=300)
+    with pytest.raises(RuntimeError, match="does not descend"):
+        measure_mod.measure(cfg)
+
+
+def test_resume_raises_on_block_size_mismatch(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "c.h5").write_bytes(b"")
+    (tmp_path / "rewl_measure.h5").write_bytes(b"")
+
+    def fake_read_hdf5(path, *a, **k):
+        if str(path).endswith("rewl_measure.h5"):
+            return (None, [_container(800)], {"block_size": 20})  # mismatched
+        return (None, [_container(500)], {"block_size": 10})
+
+    monkeypatch.setattr(
+        measure_mod.ClusterExpansion, "read", lambda *a, **k: object()
+    )
+    monkeypatch.setattr(
+        measure_mod, "build_moves_and_kwargs",
+        lambda cfg, ce: (None, None, None, {}),
+    )
+    monkeypatch.setattr(measure_mod, "read_hdf5", fake_read_hdf5)
+    with pytest.raises(RuntimeError, match="not a matching pair"):
+        measure_mod.measure(cfg)
+
+
+def test_resume_chain_accounts_across_segments(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)  # target 100, baseline 50
+    spy1 = _install(monkeypatch, tmp_path, dos_step=500, meas_step=600)  # done 10
+    measure_mod.measure(cfg)
+    assert spy1.run_calls == [90]
+    spy2 = _install(monkeypatch, tmp_path, dos_step=500, meas_step=900)  # done 40
+    measure_mod.measure(cfg)
+    assert spy2.run_calls == [60]
+
+
+def test_no_checkpoint_writer_when_interval_zero(tmp_path, monkeypatch):
+    from nbo2f_analysis.rewl.config import load_yaml
+    p = tmp_path / "cfg.yaml"
+    p.write_text(
+        _BASE_CFG
+        + _MEAS_BLOCK.replace(
+            "checkpoint_interval_cycles: 10", "checkpoint_interval_cycles: 0"
+        )
+    )
+    cfg = load_yaml(p)
+    spy = _install(monkeypatch, tmp_path, dos_step=500)
+    measure_mod.measure(cfg)
+    assert spy.checkpoint_writer_attached is False
+
+
+def test_allow_kwargs_mismatch_emits_status_line(tmp_path, monkeypatch, capsys):
+    cfg = _cfg(tmp_path)
+    _install(monkeypatch, tmp_path, dos_step=500)
+    measure_mod.measure(cfg, allow_kwargs_mismatch=True)
+    assert "allow_kwargs_mismatch=True" in capsys.readouterr().out
 
 
 def test_resume_subtracts_dos_baseline(tmp_path, monkeypatch):

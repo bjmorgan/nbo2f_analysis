@@ -88,8 +88,32 @@ def measure(
 
     if meas_ckpt.exists():
         source = meas_ckpt
-        _, meas_containers, _ = read_hdf5(str(meas_ckpt))
-        meas_done = completed_cycles(meas_containers, block_size) - dos_baseline
+        _, meas_containers, meas_meta = read_hdf5(str(meas_ckpt))
+        # The measurement inherits the DOS block_size; a mismatch means the
+        # two files are not a matching pair, which would make the cycle
+        # count meaningless.
+        meas_block_size = int(meas_meta["block_size"])
+        if meas_block_size != block_size:
+            raise RuntimeError(
+                f"Measurement checkpoint block_size ({meas_block_size}) does "
+                f"not match the DOS checkpoint ({block_size}); the two "
+                f"checkpoints are not a matching pair."
+            )
+        meas_total = completed_cycles(meas_containers, block_size)
+        meas_done = meas_total - dos_baseline
+        # A valid measurement checkpoint only ever adds cycles on top of the
+        # DOS baseline, so meas_total >= dos_baseline always. A negative
+        # difference means this checkpoint does not descend from the current
+        # DOS baseline -- fail loudly rather than run a wrong cycle count.
+        if meas_done < 0:
+            raise RuntimeError(
+                f"Measurement checkpoint {meas_ckpt} has {meas_total} "
+                f"completed cycles, fewer than the DOS baseline "
+                f"{dos_baseline}: it does not descend from the current DOS "
+                f"checkpoint (the DOS run was extended after measurement, or "
+                f"this is a stale/foreign measurement checkpoint). Delete "
+                f"{meas_ckpt} to remeasure on the current DOS."
+            )
     else:
         source = dos_ckpt
         meas_done = 0
@@ -107,6 +131,11 @@ def measure(
         _status("Already at or beyond measurement budget; nothing to run.")
         return
 
+    if allow_kwargs_mismatch:
+        _status(
+            "allow_kwargs_mismatch=True: an ensemble-kwargs hash mismatch "
+            "will be downgraded to a warning (CE identity stays strict)."
+        )
     _status(f"Loading checkpoint (frozen-g measurement) from {source}")
     pt = WangLandauParallelTempering.measure_from_checkpoint_process_pool(
         str(source),
