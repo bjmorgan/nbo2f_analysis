@@ -192,6 +192,24 @@ def test_resume_raises_on_windows_mismatch(tmp_path, monkeypatch):
         measure_mod.measure(cfg)
 
 
+def test_resume_accepts_matching_open_window_edges(tmp_path, monkeypatch):
+    # Open window edges encode as NaN; a genuine matching pair must still be
+    # accepted (np.array_equal needs equal_nan=True, since NaN != NaN).
+    cfg = _cfg(tmp_path)
+    spy = _install(monkeypatch, tmp_path, dos_step=500, meas_step=800)
+    nan_windows = [[float("-inf"), -9.0], [-9.5, float("nan")]]
+
+    def fake_read_hdf5(path, *a, **k):
+        meta = {"block_size": 10, "windows": nan_windows}
+        if str(path).endswith("rewl_measure.h5"):
+            return (None, [_container(800)], meta)
+        return (None, [_container(500)], meta)
+
+    monkeypatch.setattr(measure_mod, "read_hdf5", fake_read_hdf5)
+    measure_mod.measure(cfg)  # must not raise on the (matching) NaN windows
+    assert spy.run_calls == [70]
+
+
 def test_resume_chain_accounts_across_segments(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path)  # target 100, baseline 50
     spy1 = _install(monkeypatch, tmp_path, dos_step=500, meas_step=600)  # done 10

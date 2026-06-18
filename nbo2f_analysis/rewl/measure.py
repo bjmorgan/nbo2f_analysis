@@ -105,8 +105,13 @@ def measure(
         # bit-identical for a genuine pair. Differing windows mean the
         # measurement descends from a different run -- e.g. a stray
         # checkpoint from a sibling same-system run directory.
+        # equal_nan=True: open window edges can encode as NaN, and NaN != NaN
+        # would otherwise falsely reject a genuine matching pair. A no-op for
+        # today's always-finite REWL windows.
         if not np.array_equal(
-            np.asarray(dos_meta["windows"]), np.asarray(meas_meta["windows"])
+            np.asarray(dos_meta["windows"]),
+            np.asarray(meas_meta["windows"]),
+            equal_nan=True,
         ):
             raise RuntimeError(
                 f"Measurement checkpoint {meas_ckpt} has different energy "
