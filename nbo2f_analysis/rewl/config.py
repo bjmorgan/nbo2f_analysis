@@ -333,9 +333,9 @@ def load_yaml(path: str | Path) -> RewlConfig:
     measurement_raw = raw.get("measurement")
     measurement: MeasurementCfg | None = None
     if measurement_raw is not None:
-        # Lazy import: pulls chainorder/mchammer/ase, so only load it when
-        # a measurement section is actually present (mirrors the
-        # ALLOWED_MOVE_TYPES lazy import above).
+        # Lazy import: chain_order_observer pulls chainorder/mchammer/ase,
+        # so only load it when a measurement section is present -- keeps
+        # load_yaml cheap for DOS-only configs.
         from nbo2f_analysis.chain_order_observer import ALLOWED_OPS
 
         ckpt_fn = str(measurement_raw["checkpoint_filename"])
