@@ -19,6 +19,7 @@ the recorder accumulates.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from itertools import permutations
 
 import numpy as np
@@ -42,8 +43,22 @@ _SIMILARITY_OPS: frozenset[str] = frozenset({
 
 _N_ORBITS = 12
 
-# Type alias for the per-orbit reference store: label -> (proper, improper).
-OrbitRefs = dict[str, tuple[list[np.ndarray], list[np.ndarray]]]
+@dataclass(frozen=True)
+class OrbitReference:
+    """Symmetry-distinct sub-cell images of one chiral orbit.
+
+    ``proper`` holds the images that preserve the orbit's handedness;
+    ``improper`` holds the enantiomer images (related by an
+    orientation-reversing operation). Naming the two lists keeps the
+    chirality-defining distinction from riding on tuple position.
+    """
+
+    proper: list[np.ndarray]
+    improper: list[np.ndarray]
+
+
+# Per-orbit reference store: orbit label ("00".."11") -> its images.
+OrbitRefs = dict[str, OrbitReference]
 
 
 def _apply_spacegroup_op(
@@ -152,7 +167,7 @@ def _generate_orbit_references(n_sc_orbit: int = 3) -> OrbitRefs:
                         elif det == -1 and key not in seen_i:
                             seen_i.add(key)
                             improper.append(img)
-        result[f"{index:02d}"] = (proper, improper)
+        result[f"{index:02d}"] = OrbitReference(proper, improper)
     return result
 
 
@@ -283,9 +298,9 @@ class ChainOrderObserver(BaseObserver):
             best_sim = 0.0
             best_p = 0.0
             best_i = 0.0
-            for label, (proper, improper) in self._orbit_refs.items():
-                p_max = self._best_similarity(counts1, counts0, proper)
-                i_max = self._best_similarity(counts1, counts0, improper)
+            for label, ref in self._orbit_refs.items():
+                p_max = self._best_similarity(counts1, counts0, ref.proper)
+                i_max = self._best_similarity(counts1, counts0, ref.improper)
                 if label == "11":
                     computed["chi_11"] = p_max - i_max
                 if p_max > best_sim or i_max > best_sim:

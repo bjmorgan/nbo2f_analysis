@@ -11,6 +11,7 @@ from nbo2f_analysis.ce_tools import (
 from nbo2f_analysis.chain_order_observer import (
     ALLOWED_OPS,
     ChainOrderObserver,
+    _apply_spacegroup_op,
     _generate_orbit_references,
     build_chain_order_observer,
 )
@@ -108,9 +109,50 @@ def test_n_sc_must_be_multiple_of_orbit():
 
 def test_generate_orbit_references_from_package_data(refs):
     assert set(refs) == {f"{i:02d}" for i in range(12)}
-    for label, (proper, improper) in refs.items():
-        assert proper, label
-        assert improper, label
+    for label, ref in refs.items():
+        assert ref.proper, label
+        assert ref.improper, label
+
+
+def test_apply_spacegroup_op_identity():
+    # Identity permutation with all-positive signs returns the input unchanged.
+    occ = np.random.default_rng(0).integers(0, 2, size=(3, 3, 3, 3))
+    out = _apply_spacegroup_op(occ, perm=(0, 1, 2), signs=(1, 1, 1))
+    assert np.array_equal(out, occ)
+
+
+def test_apply_spacegroup_op_permutes_cells():
+    # Any space-group op permutes occupation cells, so the value multiset
+    # (and hence the F count) is preserved.
+    occ = np.random.default_rng(1).integers(0, 2, size=(3, 3, 3, 3))
+    out = _apply_spacegroup_op(occ, perm=(1, 2, 0), signs=(1, -1, 1))
+    assert out.shape == occ.shape
+    assert sorted(out.ravel().tolist()) == sorted(occ.ravel().tolist())
+
+
+def test_apply_spacegroup_op_reflection_is_involution():
+    # A pure single-axis reflection is its own inverse; applying it twice
+    # must recover the input. This exercises the half-integer vs integer
+    # sign-dependent negation, where an off-by-one would not self-cancel.
+    occ = np.random.default_rng(2).integers(0, 2, size=(3, 3, 3, 3))
+    refl = _apply_spacegroup_op(occ, perm=(0, 1, 2), signs=(-1, 1, 1))
+    twice = _apply_spacegroup_op(refl, perm=(0, 1, 2), signs=(-1, 1, 1))
+    assert np.array_equal(twice, occ)
+    assert not np.array_equal(refl, occ)  # the reflection actually moves cells
+
+
+def test_chi_11_flips_sign_under_reflection(observer):
+    # chi_11 is signed (Z2): the enantiomer must give the opposite sign,
+    # which the Binder even-moment analysis relies on.
+    gs = build_tiled_groundstate_atoms(n_sc=3)
+    chi0 = observer.get_observable(gs)["chi_11"]
+    mirror = gs.copy()
+    scaled = mirror.get_scaled_positions(wrap=True)
+    scaled[:, 0] = (-scaled[:, 0]) % 1.0
+    mirror.set_scaled_positions(scaled)
+    chi_mirror = observer.get_observable(mirror)["chi_11"]
+    assert chi0 > 0
+    assert chi_mirror == pytest.approx(-chi0, abs=1e-9)
 
 
 def test_build_chain_order_observer_constructs_working_observer():
