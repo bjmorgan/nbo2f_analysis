@@ -17,6 +17,8 @@ import os
 import time
 from pathlib import Path
 
+import numpy as np
+
 os.environ.setdefault("PYMBAR_DISABLE_JAX", "1")
 
 from icet import ClusterExpansion
@@ -98,6 +100,18 @@ def measure(
                 f"Measurement checkpoint block_size ({meas_block_size}) does "
                 f"not match the DOS checkpoint ({block_size}); the two "
                 f"checkpoints are not a matching pair."
+            )
+        # A measurement inherits its DOS run's windows verbatim, so they are
+        # bit-identical for a genuine pair. Differing windows mean the
+        # measurement descends from a different run -- e.g. a stray
+        # checkpoint from a sibling same-system run directory.
+        if not np.array_equal(
+            np.asarray(dos_meta["windows"]), np.asarray(meas_meta["windows"])
+        ):
+            raise RuntimeError(
+                f"Measurement checkpoint {meas_ckpt} has different energy "
+                f"windows from the DOS checkpoint; they are not a matching "
+                f"pair. Delete {meas_ckpt} to remeasure on the current DOS."
             )
         meas_total = completed_cycles(meas_containers, block_size)
         meas_done = meas_total - dos_baseline

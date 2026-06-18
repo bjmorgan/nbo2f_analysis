@@ -75,6 +75,9 @@ class _SpyPT:
         self.save_calls += 1
 
 
+_WINDOWS = [[-10.0, -9.0], [-9.5, -8.5]]
+
+
 def _container(last_step):
     return types.SimpleNamespace(_last_state={"last_step": last_step})
 
@@ -95,9 +98,10 @@ def _install(monkeypatch, tmp_path, *, dos_step, meas_step=None, block_size=10):
     spy = _SpyPT()
 
     def fake_read_hdf5(path, *a, **k):
+        meta = {"block_size": block_size, "windows": _WINDOWS}
         if str(path).endswith("rewl_measure.h5"):
-            return (None, [_container(meas_step)], {"block_size": block_size})
-        return (None, [_container(dos_step)], {"block_size": block_size})
+            return (None, [_container(meas_step)], meta)
+        return (None, [_container(dos_step)], meta)
 
     monkeypatch.setattr(
         measure_mod.ClusterExpansion, "read", lambda *a, **k: object()
@@ -160,6 +164,31 @@ def test_resume_raises_on_block_size_mismatch(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(measure_mod, "read_hdf5", fake_read_hdf5)
     with pytest.raises(RuntimeError, match="not a matching pair"):
+        measure_mod.measure(cfg)
+
+
+def test_resume_raises_on_windows_mismatch(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "c.h5").write_bytes(b"")
+    (tmp_path / "rewl_measure.h5").write_bytes(b"")
+
+    def fake_read_hdf5(path, *a, **k):
+        if str(path).endswith("rewl_measure.h5"):
+            return (None, [_container(800)],
+                    {"block_size": 10, "windows": [[-20.0, -19.0]]})  # foreign
+        return (None, [_container(500)],
+                {"block_size": 10, "windows": _WINDOWS})
+
+    monkeypatch.setattr(
+        measure_mod.ClusterExpansion, "read", lambda *a, **k: object()
+    )
+    monkeypatch.setattr(
+        measure_mod, "build_moves_and_kwargs",
+        lambda cfg, ce: (None, None, None, {}),
+    )
+    monkeypatch.setattr(measure_mod, "read_hdf5", fake_read_hdf5)
+    with pytest.raises(RuntimeError, match="different energy"):
         measure_mod.measure(cfg)
 
 
