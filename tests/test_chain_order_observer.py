@@ -7,6 +7,7 @@ import pytest
 from nbo2f_analysis.ce_tools import (
     atoms_from_f_mask_stable,
     build_tiled_groundstate_atoms,
+    nb_anion_neighbours,
 )
 from nbo2f_analysis.chain_order_observer import (
     ALLOWED_OPS,
@@ -16,7 +17,9 @@ from nbo2f_analysis.chain_order_observer import (
     build_chain_order_observer,
 )
 
-_ALL_OPS = (
+# The order parameters with captured golden values (a subset of
+# ALLOWED_OPS; collinear_ff is validated by its own dedicated tests below).
+_GOLDEN_OPS = (
     "chi_11", "closest_chi", "closest_sim", "icoh_global",
     "icoh_nn", "oof_amp", "cis_frac", "nbo4f2_frac",
 )
@@ -53,7 +56,7 @@ def refs():
 
 @pytest.fixture(scope="module")
 def observer(refs):
-    return ChainOrderObserver(n_sc=3, interval=1, orbit_refs=refs, ops=_ALL_OPS)
+    return ChainOrderObserver(n_sc=3, interval=1, orbit_refs=refs, ops=_GOLDEN_OPS)
 
 
 def _random_stable_atoms_n3(seed: int = 12345):
@@ -66,7 +69,7 @@ def _random_stable_atoms_n3(seed: int = 12345):
 
 def test_reproduces_golden_on_tiled_gs(observer):
     out = observer.get_observable(build_tiled_groundstate_atoms(n_sc=3))
-    assert set(out) == set(_ALL_OPS)
+    assert set(out) == set(_GOLDEN_OPS)
     for k, v in _GOLDEN_TILED_GS_N3.items():
         assert out[k] == pytest.approx(v, abs=1e-9), k
 
@@ -89,6 +92,85 @@ def test_ops_selects_subset(refs):
     obs = ChainOrderObserver(3, 1, refs, ops=("oof_amp", "cis_frac"))
     out = obs.get_observable(build_tiled_groundstate_atoms(n_sc=3))
     assert set(out) == {"oof_amp", "cis_frac"}
+
+
+def _direct_collinear_ff_density(f_mask, n_sc):
+    """Independent geometric oracle: mean collinear (trans) F-Nb-F pairs per
+    cation, divided by the three axes -- the same per-(cation, axis) density
+    the FF-along-chain motif route should yield.
+    """
+    fn = f_mask[nb_anion_neighbours(n_sc)]  # (n_nb, 6) in [+x,-x,+y,-y,+z,-z]
+    pairs = ((fn[:, 0] & fn[:, 1]).astype(int)
+             + (fn[:, 2] & fn[:, 3]) + (fn[:, 4] & fn[:, 5]))
+    return float(pairs.mean()) / 3.0
+
+
+def test_collinear_ff_zero_in_ground_state(refs):
+    obs = ChainOrderObserver(3, 1, refs, ops=("collinear_ff",))
+    out = obs.get_observable(build_tiled_groundstate_atoms(n_sc=3))
+    assert out["collinear_ff"] == 0.0
+
+
+def test_collinear_ff_zero_for_isolated_f(refs):
+    # A single isolated F has no adjacent FF in any direction, so every
+    # direction's motif dict lacks the (1, 1) key. This pins the None -> 0.0
+    # fallback directly, independent of the ground-state geometry.
+    n_sc = 3
+    mask = np.zeros(3 * n_sc**3, dtype=bool)
+    mask[0] = True
+    obs = ChainOrderObserver(n_sc, 1, refs, ops=("collinear_ff",))
+    out = obs.get_observable(atoms_from_f_mask_stable(n_sc, mask))
+    assert out["collinear_ff"] == 0.0
+
+
+@pytest.mark.parametrize("n_sc", [3, 6])
+@pytest.mark.parametrize("seed", [0, 7, 42, 2024])
+def test_collinear_ff_matches_direct_geometric_count(refs, n_sc, seed):
+    # Equality to an independent geometric oracle on random fixed-composition
+    # configs. The observer route (atoms -> SublatticeOccupation -> FF motif)
+    # and the oracle (neighbour table -> same-axis pair count) share no code,
+    # so agreement cross-validates the FF-along-chain identity. n_sc=6
+    # exercises longer chains/wrap than the n_sc=3 base case.
+    n_anion = 3 * n_sc**3
+    rng = np.random.default_rng(seed)
+    mask = np.zeros(n_anion, dtype=bool)
+    mask[rng.choice(n_anion, n_sc**3, replace=False)] = True
+    obs = ChainOrderObserver(n_sc, 1, refs, ops=("collinear_ff",))
+    out = obs.get_observable(atoms_from_f_mask_stable(n_sc, mask))
+    assert out["collinear_ff"] == pytest.approx(
+        _direct_collinear_ff_density(mask, n_sc), abs=1e-12)
+
+
+def test_collinear_ff_saturated_all_f(refs):
+    # Every length-2 window is FF, so the per-(cation, axis) density is at
+    # its maximum, 1.0 -- a per-Nb count would instead give 3.0.
+    n_sc = 3
+    mask = np.ones(3 * n_sc**3, dtype=bool)
+    obs = ChainOrderObserver(n_sc, 1, refs, ops=("collinear_ff",))
+    out = obs.get_observable(atoms_from_f_mask_stable(n_sc, mask))
+    assert out["collinear_ff"] == 1.0
+
+
+def test_collinear_ff_disordered_limit_is_one_ninth(refs):
+    # Physics sanity check, independent of the geometric oracle: in the fully
+    # disordered f_F = 1/3 limit each chain site is F with probability 1/3
+    # independently, so an adjacent FF pair occurs with probability (1/3)**2
+    # and the per-(cation, axis) density tends to 1/9. The mean over many
+    # fixed-composition configs sits a hair below 1/9 (finite n_sc, sampling
+    # without replacement); the tolerance brackets that bias and decisively
+    # excludes the 0 and 1/3 (per-Nb count) alternatives.
+    n_sc = 6
+    n_anion = 3 * n_sc**3
+    obs = ChainOrderObserver(n_sc, 1, refs, ops=("collinear_ff",))
+    vals = []
+    for seed in range(200):
+        rng = np.random.default_rng(seed)
+        mask = np.zeros(n_anion, dtype=bool)
+        mask[rng.choice(n_anion, n_sc**3, replace=False)] = True
+        vals.append(
+            obs.get_observable(atoms_from_f_mask_stable(n_sc, mask))["collinear_ff"]
+        )
+    assert np.mean(vals) == pytest.approx(1 / 9, abs=5e-3)
 
 
 def test_closest_orbit_not_recordable(refs):
