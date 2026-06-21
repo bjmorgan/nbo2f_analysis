@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-21
+
+### Added
+
+- `collinear_ff` order parameter on `ChainOrderObserver` (a new recordable
+  name in `ALLOWED_OPS` and in the `template.yaml` `ops:` list): the
+  per-(cation, axis) density of collinear (trans) F-Nb-F units, averaged over
+  the three chain directions. A cation's two same-axis anions are consecutive
+  sites along an anion chain, so a collinear F-Nb-F pair is an adjacent FF pair
+  along the chain; it is read off the `(1, 1)` 2-motif frequency from
+  `chainorder.order_params.motif_frequencies`. Unlike `cis_frac`, which only
+  inspects NbO4F2 octahedra, `collinear_ff` measures collinear F across all
+  coordinations, so it is 0 whenever the chains keep F-spacing >= 2 (the ground
+  state and Brink states) and rises only as the chains genuinely melt (the
+  fully random f_F = 1/3 limit is the analytic 1/9).
+
 ## [0.7.0] - 2026-06-18
 
 ### Added
