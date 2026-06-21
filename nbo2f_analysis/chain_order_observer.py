@@ -182,8 +182,11 @@ class ChainOrderObserver(BaseObserver):
     - ``icoh_global``: global inter-chain phase coherence.
     - ``cis_frac``: fraction of Nb with cis F coordination.
     - ``nbo4f2_frac``: fraction of Nb with the local NbO4F2 stoichiometry.
-    - ``collinear_ff``: per-(cation, axis) density of collinear F--Nb--F
-      (the adjacent-F chain motif), measured across all coordinations.
+    - ``collinear_ff``: per-(cation, axis) density of collinear (trans)
+      F--Nb--F (the adjacent-F chain motif), measured across all
+      coordinations. It is 0 in the chain-ordered states (F-spacing
+      >= 2) and rises towards 1/9 in the fully disordered f_F = 1/3
+      limit.
     - ``chi_11``: signed enantiomeric similarity to orbit 11 (the observed
       broken-symmetry ground state), ``P_max - I_max`` over proper vs
       improper tilings.
@@ -280,6 +283,9 @@ class ChainOrderObserver(BaseObserver):
             # cation's two same-axis anions are consecutive chain sites. The
             # FF (1, 1) 2-motif frequency is its per-(cation, axis) density,
             # measured across all coordinations (cf. cis_frac, NbO4F2-only).
+            # motif_frequencies omits patterns that never occur, so a
+            # direction with no adjacent FF anywhere has no (1, 1) key --
+            # treat that absence as a zero frequency.
             motifs = order_params.motif_frequencies(direction, window_length=2)
             ff = motifs.get((1, 1))
             ff_motifs.append(float(ff.mean()) if ff is not None else 0.0)

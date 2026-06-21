@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `chainorder.order_params.motif_frequencies`. Unlike `cis_frac`, which only
   inspects NbO4F2 octahedra, `collinear_ff` measures collinear F across all
   coordinations, so it is 0 whenever the chains keep F-spacing >= 2 (the ground
-  state and Brink states) and rises only as the chains genuinely melt (the
-  fully random f_F = 1/3 limit is the analytic 1/9).
+  state and other period-3 chain orderings) and rises only as the chains
+  genuinely melt (the fully random f_F = 1/3 limit is the analytic 1/9).
 
 ## [0.7.0] - 2026-06-18
 
