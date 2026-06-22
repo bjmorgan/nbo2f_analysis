@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-22
+
+### Changed
+
+- `icet` is now sourced from PyPI (`icet>=3.2`) rather than the
+  `bjmorgan/icet` fork, which is no longer needed: the Wang-Landau
+  stack (`mchammer-pt`, `mchammer-moves`) now runs on upstream icet.
+  `chainorder` is now the only dependency fetched from a git remote.
+
 ## [0.9.0] - 2026-06-22
 
 ### Changed
