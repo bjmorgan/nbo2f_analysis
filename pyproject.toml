@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nbo2f-analysis"
-version = "0.9.0"
+version = "0.10.0"
 description = "Analysis tools for NbO2F finite-size scaling, including the REWL driver."
 requires-python = ">=3.11"
 dependencies = [
@@ -16,9 +16,9 @@ dependencies = [
     "pyyaml",
     "ase",
     "bsym",
+    "icet>=3.2",
     "mchammer-pt>=0.27.0",
     "mchammer-moves>=0.6.0",
-    "icet @ git+https://gitlab.com/bjmorgan/icet.git@master",
     "chainorder @ git+https://github.com/bjmorgan/chainorder.git",
 ]
 
