@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-22
+
+### Changed
+
+- `mchammer-pt` and `mchammer-moves` are now sourced from PyPI rather
+  than their git remotes, pinned to minimum versions
+  (`mchammer-pt>=0.27.0`, `mchammer-moves>=0.6.0`). Only the `icet` fork
+  and `chainorder` remain git-sourced; the destructive-editable-install
+  footgun and its `pip install -e . --no-deps` workaround now apply to
+  those two alone.
+
 ## [0.8.0] - 2026-06-21
 
 ### Added

@@ -24,18 +24,17 @@ From anywhere (e.g. ARCHER2):
 
     pip install git+https://github.com/bjmorgan/nbo2f_analysis.git
 
-Four dependencies are fetched directly from their git remotes rather
-than from PyPI: the `icet` fork, `mchammer-pt`, `mchammer-moves`, and
-`chainorder`.
+Two dependencies are fetched directly from their git remotes rather
+than from PyPI: the `icet` fork and `chainorder`.
 
-**If you have any of those four installed editably from a local
+**If you have either of those two installed editably from a local
 checkout, install this package with `--no-deps`** to avoid pip
 replacing those editable installs with fresh wheels:
 
     pip install -e . --no-deps
 
 Verify the editable installs are intact afterwards with
-`pip list | grep -iE "icet|mchammer|chainorder"`.
+`pip list | grep -iE "icet|chainorder"`.
 
 ## REWL driver
 
