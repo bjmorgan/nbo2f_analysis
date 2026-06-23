@@ -118,3 +118,22 @@ def test_chi_11_mean_near_zero_and_rms_decreases():
     assert abs(mean3) <= 4 * sem3
     assert abs(mean6) <= 4 * sem6
     assert sem3 > sem6
+
+
+def test_reference_table_smoke():
+    rows = sor.reference_table((3,), 8, seed=0)
+    # One row per referenced OP, in REFERENCE_OPS order.
+    assert [r["op"] for r in rows] == list(sor.REFERENCE_OPS)
+    assert set(rows[0]) == {
+        "op", "n_sc", "analytic_random", "mc_mean", "mc_sem", "ground_state",
+    }
+    by_op = {r["op"]: r for r in rows}
+    # analytic_random: exact local limit, Rayleigh floor, and the 0 limit.
+    assert by_op["collinear_ff"]["analytic_random"] == pytest.approx(1 / 9)
+    assert by_op["oof_amp"]["analytic_random"] == pytest.approx(
+        sor.oof_amp_random(3)
+    )
+    assert by_op["chi_11"]["analytic_random"] == 0.0
+    # ground_state column carries the exact anchors.
+    assert by_op["icoh_global"]["ground_state"] == pytest.approx(1.0, abs=1e-9)
+    assert by_op["collinear_ff"]["ground_state"] == pytest.approx(0.0, abs=1e-9)

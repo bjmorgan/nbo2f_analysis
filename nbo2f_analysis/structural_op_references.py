@@ -176,3 +176,53 @@ def monte_carlo_random_reference(
         op: (float(v.mean()), float(v.std(ddof=1) / math.sqrt(n_samples)))
         for op, v in samples.items()
     }
+
+
+def _analytic_random(op: str, n_sc: int, local: dict[str, Fraction]) -> float:
+    """Analytic random reference for ``op`` at size ``n_sc``.
+
+    Local-coordination OPs use their exact (L-independent) limit; ``oof_amp``
+    uses the Rayleigh floor; ``icoh_global`` and ``chi_11`` have analytic
+    limit 0 (their finite-size value shows up in the MC column).
+    """
+    if op in local:
+        return float(local[op])
+    if op == "oof_amp":
+        return oof_amp_random(n_sc)
+    if op in ("icoh_global", "chi_11"):
+        return 0.0
+    raise KeyError(f"no analytic random reference for {op!r}")
+
+
+def reference_table(
+    sizes: tuple[int, ...], n_samples: int, *, seed: int
+) -> list[dict[str, object]]:
+    """Long-format reference rows: one per (OP, size).
+
+    Columns: ``op, n_sc, analytic_random, mc_mean, mc_sem, ground_state``.
+    ``ground_state`` is L-independent and repeated per size for a tidy table.
+
+    Args:
+        sizes: Supercell sides to tabulate (each a multiple of 3).
+        n_samples: MC samples per size.
+        seed: MC RNG seed, shared across sizes.
+
+    Returns:
+        Rows ordered by size, then :data:`REFERENCE_OPS`.
+    """
+    local = random_local_limits()
+    rows: list[dict[str, object]] = []
+    for n_sc in sizes:
+        gs = ground_state_reference(n_sc)
+        mc = monte_carlo_random_reference(n_sc, n_samples, seed=seed)
+        for op in REFERENCE_OPS:
+            mean, sem = mc[op]
+            rows.append({
+                "op": op,
+                "n_sc": n_sc,
+                "analytic_random": _analytic_random(op, n_sc, local),
+                "mc_mean": mean,
+                "mc_sem": sem,
+                "ground_state": gs[op],
+            })
+    return rows
