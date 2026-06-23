@@ -41,7 +41,20 @@ _SIMILARITY_OPS: frozenset[str] = frozenset({
     "chi_11", "closest_chi", "closest_sim",
 })
 
+# Every similarity op must also be a recordable op: a name added to
+# _SIMILARITY_OPS but not ALLOWED_OPS would be silently unrequestable, since
+# it could never pass the constructor's ops-subset check. Fail at import.
+if not (_SIMILARITY_OPS <= ALLOWED_OPS):
+    raise RuntimeError(
+        "_SIMILARITY_OPS contains names absent from ALLOWED_OPS: "
+        f"{sorted(_SIMILARITY_OPS - ALLOWED_OPS)}"
+    )
+
 _N_ORBITS = 12
+
+# Label of the observed chiral broken-symmetry ground state (orbit 11);
+# ``chi_11`` is the signed similarity to this orbit specifically.
+_GROUND_STATE_ORBIT = "11"
 
 @dataclass(frozen=True)
 class OrbitReference:
@@ -49,12 +62,12 @@ class OrbitReference:
 
     ``proper`` holds the images that preserve the orbit's handedness;
     ``improper`` holds the enantiomer images (related by an
-    orientation-reversing operation). Naming the two lists keeps the
+    orientation-reversing operation). Naming the two fields keeps the
     chirality-defining distinction from riding on tuple position.
     """
 
-    proper: list[np.ndarray]
-    improper: list[np.ndarray]
+    proper: tuple[np.ndarray, ...]
+    improper: tuple[np.ndarray, ...]
 
 
 # Per-orbit reference store: orbit label ("00".."11") -> its images.
@@ -69,10 +82,10 @@ def _apply_spacegroup_op(
     The anion sublattice has three edge-midpoint sub-lattices. Sublattice
     *s* sits at half-integer coordinate along axis *s* and integer
     coordinates along the other two. A rotation (``perm``, ``signs``)
-    permutes and possibly negates the axes; the half-integer vs integer
-    distinction means negation maps differently depending on whether the
-    coordinate is half-integer (``i -> N-1-i``) or integer (``j -> -j mod
-    N``).
+    permutes and possibly negates the axes. Because of the half-integer vs
+    integer distinction, a negated axis maps as ``c -> N-1-c`` when it is the
+    sublattice's own (half-integer) axis and as ``c -> -c mod N`` for the
+    other (integer) axes, where ``c`` is the coordinate along that axis.
 
     Args:
         occ: Occupation array, shape ``(3, N, N, N)``.
@@ -119,7 +132,7 @@ def _generate_orbit_references(n_sc_orbit: int = 3) -> OrbitRefs:
 
     Returns:
         Dict mapping orbit label (``"00"``..``"11"``) to
-        ``(proper, improper)`` lists of
+        ``(proper, improper)`` tuples of
         ``(3, n_sc_orbit, n_sc_orbit, n_sc_orbit)`` occupation arrays.
         Proper images preserve handedness; improper images are the
         enantiomer.
@@ -167,7 +180,7 @@ def _generate_orbit_references(n_sc_orbit: int = 3) -> OrbitRefs:
                         elif det == -1 and key not in seen_i:
                             seen_i.add(key)
                             improper.append(img)
-        result[f"{index:02d}"] = OrbitReference(proper, improper)
+        result[f"{index:02d}"] = OrbitReference(tuple(proper), tuple(improper))
     return result
 
 
@@ -192,6 +205,10 @@ class ChainOrderObserver(BaseObserver):
       improper tilings.
     - ``closest_sim``: maximum similarity to any of the 12 orbits.
     - ``closest_chi``: signed enantiomeric similarity of the closest orbit.
+      At an exact similarity tie between opposite-handed orbits the
+      lowest-labelled orbit wins, so ``closest_chi``'s sign is arbitrary at a
+      tie; ``chi_11`` (fixed to one orbit) is the order parameter to use for
+      Binder-cumulant analysis.
 
     ``get_observable`` returns only the order parameters named in ``ops``.
     The structure must be in stable Nb-first ordering (as produced by
@@ -260,7 +277,7 @@ class ChainOrderObserver(BaseObserver):
         self,
         counts1: np.ndarray,
         counts0: np.ndarray,
-        refs: list[np.ndarray],
+        refs: tuple[np.ndarray, ...],
     ) -> float:
         best = 0
         for ref in refs:
@@ -318,7 +335,7 @@ class ChainOrderObserver(BaseObserver):
             for label, ref in self._orbit_refs.items():
                 p_max = self._best_similarity(counts1, counts0, ref.proper)
                 i_max = self._best_similarity(counts1, counts0, ref.improper)
-                if label == "11":
+                if label == _GROUND_STATE_ORBIT:
                     computed["chi_11"] = p_max - i_max
                 if p_max > best_sim or i_max > best_sim:
                     best_p = p_max
