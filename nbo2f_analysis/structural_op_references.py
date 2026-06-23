@@ -21,6 +21,9 @@ from __future__ import annotations
 import math
 from fractions import Fraction
 
+from nbo2f_analysis.ce_tools import build_tiled_groundstate_atoms
+from nbo2f_analysis.chain_order_observer import build_chain_order_observer
+
 # The OPs this module references, in CSV row order: the four manuscript
 # structural OPs, plus collinear_ff and the chiral chi_11.
 REFERENCE_OPS: tuple[str, ...] = (
@@ -91,3 +94,26 @@ def oof_amp_random(n_sc: int, f: float = 1 / 3) -> float:
         The expected random ``oof_amp`` at this size.
     """
     return 0.5 * math.sqrt(math.pi * f * (1 - f) / n_sc)
+
+
+def ground_state_reference(n_sc: int) -> dict[str, float]:
+    """Exact P3_121 ground-state values of the reference OPs.
+
+    Builds the tiled chiral ground state and evaluates the production
+    observer, so the anchors are pinned against the same code the manuscript
+    runs. The values are L-independent:
+
+        chi_11 = 4/9, icoh_global = 1, oof_amp = 1/3,
+        cis_frac = nbo4f2_frac = 1, collinear_ff = 0.
+
+    ``chi_11 = 4/9`` (not 1) because an orbit and its enantiomer share 5/9 of
+    sites.
+
+    Args:
+        n_sc: Supercell side (a multiple of 3).
+
+    Returns:
+        Observer output for :data:`REFERENCE_OPS` on the tiled ground state.
+    """
+    observer = build_chain_order_observer(n_sc, interval=1, ops=REFERENCE_OPS)
+    return observer.get_observable(build_tiled_groundstate_atoms(n_sc=n_sc))

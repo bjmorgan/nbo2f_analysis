@@ -42,3 +42,16 @@ def test_oof_amp_random_known_values():
     # The MC-verified floor: 0.171 at L=6, 0.121 at L=12.
     assert sor.oof_amp_random(6) == pytest.approx(0.1706, abs=1e-4)
     assert sor.oof_amp_random(12) == pytest.approx(0.1206, abs=1e-4)
+
+
+@pytest.mark.parametrize("n_sc", [3, 6])
+def test_ground_state_anchors_exact(n_sc):
+    # L-independent P3_121 anchors, verified against the production observer.
+    # chi_11 = 4/9 (not 1): an orbit and its enantiomer share 5/9 of sites.
+    gs = sor.ground_state_reference(n_sc)
+    assert gs["chi_11"] == pytest.approx(4 / 9, abs=1e-9)
+    assert gs["icoh_global"] == pytest.approx(1.0, abs=1e-9)
+    assert gs["oof_amp"] == pytest.approx(1 / 3, abs=1e-9)
+    assert gs["cis_frac"] == pytest.approx(1.0, abs=1e-9)
+    assert gs["nbo4f2_frac"] == pytest.approx(1.0, abs=1e-9)
+    assert gs["collinear_ff"] == pytest.approx(0.0, abs=1e-9)
