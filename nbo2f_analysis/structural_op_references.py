@@ -250,6 +250,15 @@ def provenance_lines(
 
     Embedding the provenance as leading ``#`` lines keeps the version and
     parameter record travelling with the citable CSV.
+
+    Args:
+        sizes: Supercell sides tabulated in the run.
+        n_samples: Monte-Carlo sample count per size.
+        seed: Monte-Carlo RNG seed.
+
+    Returns:
+        Lines beginning with ``#`` -- the package versions, then the run
+        parameters -- suitable for prepending to the CSV.
     """
     return [
         f"# nbo2f-analysis {importlib.metadata.version('nbo2f-analysis')}",
@@ -261,7 +270,14 @@ def provenance_lines(
 def write_csv(
     rows: list[dict[str, object]], file: TextIO, *, provenance: list[str]
 ) -> None:
-    """Write the provenance comment lines, then the CSV table, to ``file``."""
+    """Write the provenance comment lines, then the CSV table, to ``file``.
+
+    Args:
+        rows: Reference rows from :func:`reference_table`.
+        file: Open text stream to write to (e.g. ``sys.stdout``).
+        provenance: ``#``-prefixed lines from :func:`provenance_lines`,
+            written before the CSV header.
+    """
     for line in provenance:
         file.write(line + "\n")
     writer = csv.DictWriter(file, fieldnames=_CSV_FIELDS)
