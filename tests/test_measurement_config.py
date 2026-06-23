@@ -109,3 +109,19 @@ def test_measurement_budget_must_be_positive(tmp_path):
     block = _VALID_MEAS.replace("n_measure_cycles: 100", "n_measure_cycles: 0")
     with pytest.raises(ValueError, match="n_measure_cycles"):
         load_yaml(_write(tmp_path, block))
+
+
+def test_measurement_checkpoint_filename_must_be_nonempty(tmp_path):
+    block = _VALID_MEAS.replace(
+        "checkpoint_filename: rewl_measure.h5", 'checkpoint_filename: ""'
+    )
+    with pytest.raises(ValueError, match="non-empty"):
+        load_yaml(_write(tmp_path, block))
+
+
+def test_measurement_checkpoint_interval_must_be_nonnegative(tmp_path):
+    block = _VALID_MEAS.replace(
+        "checkpoint_interval_cycles: 10", "checkpoint_interval_cycles: -1"
+    )
+    with pytest.raises(ValueError, match="checkpoint_interval_cycles"):
+        load_yaml(_write(tmp_path, block))
