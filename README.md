@@ -24,18 +24,6 @@ From anywhere (e.g. ARCHER2):
 
     pip install git+https://github.com/bjmorgan/nbo2f_analysis.git
 
-One dependency is fetched directly from its git remote rather than
-from PyPI: `chainorder`.
-
-**If you have it installed editably from a local checkout, install
-this package with `--no-deps`** to avoid pip replacing that editable
-install with a fresh wheel:
-
-    pip install -e . --no-deps
-
-Verify the editable install is intact afterwards with
-`pip list | grep -i chainorder`.
-
 ## REWL driver
 
     rewl run         [--seed N] [--out-dir DIR] [--force] <config.yaml>
