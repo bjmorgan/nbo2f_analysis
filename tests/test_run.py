@@ -70,6 +70,20 @@ def test_run_forwards_wl_knobs_to_process_pool(
         assert captured.get(key) == value
 
 
+def test_cycles_target_floors_to_whole_cycles():
+    # 1000 trials in 108-step blocks is 9 whole cycles; the remainder is a
+    # partial block that never completes.
+    assert run_mod._cycles_target(1000, 108) == 9
+
+
+def test_cycles_target_rejects_sub_block_budget():
+    # A budget smaller than one block floors to zero cycles: a fresh run would
+    # otherwise sample nothing yet report completion -- the silent
+    # success-on-zero-work failure mode.
+    with pytest.raises(ValueError, match="no WL cycles"):
+        run_mod._cycles_target(50, 108)
+
+
 class _SpyPT:
     """Stands in for the resumed orchestrator: records run() calls."""
 

@@ -34,7 +34,7 @@ wl:
   flatness_mode: "pooled"
   merge_cadence: "at_halve"
   n_trials_per_walker: 1000
-  block_size_sweeps: 10
+  block_size_sweeps: 1  # keep n_atoms*sweeps <= n_trials so run() has >= 1 cycle
   trajectory_write_interval_sweeps: 0
 {wl_extra}
 moves:
