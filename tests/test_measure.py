@@ -266,6 +266,16 @@ def test_extra_cycles_overrides_auto_count(tmp_path, monkeypatch):
     assert spy.run_calls == [7]
 
 
+def test_negative_extra_cycles_rejected(tmp_path, monkeypatch):
+    # A negative explicit count is a usage error: without the guard it falls
+    # into the n_extra <= 0 branch and reports "nothing to run", silently
+    # doing no work while the user asked for more cycles.
+    cfg = _cfg(tmp_path)
+    _install(monkeypatch, tmp_path, dos_step=500)
+    with pytest.raises(ValueError, match="negative"):
+        measure_mod.measure(cfg, extra_cycles=-5)
+
+
 def test_observer_built_with_configured_interval_and_ops(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path)
     captured: dict = {}

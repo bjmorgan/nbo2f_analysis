@@ -42,6 +42,55 @@ def _status(*args: object) -> None:
     print(*args, flush=True)
 
 
+def _validate_extra_cycles(extra_cycles: int | None) -> None:
+    """Reject a negative explicit ``--extra-cycles`` count.
+
+    Shared by ``resume`` and ``measure``, which both treat ``extra_cycles``
+    as an override for the auto-computed remainder. A negative override would
+    otherwise fall through to the ``n_extra <= 0`` no-op branch and report
+    "nothing to run" -- a misleading success that silently does no work after
+    the user explicitly asked for more cycles. ``None`` (auto-remainder) and
+    ``0`` (an explicit no-op) are left to the normal accounting.
+    """
+    if extra_cycles is not None and int(extra_cycles) < 0:
+        raise ValueError(
+            f"extra_cycles must not be negative when given, got {extra_cycles}"
+        )
+
+
+def _cycles_target(n_trials_per_walker: int, block_size: int) -> int:
+    """Whole WL cycles that fit in a fresh run's per-walker trial budget.
+
+    A cycle is one ``block_size``-step block, so the budget yields
+    ``n_trials_per_walker // block_size`` whole cycles. A budget smaller than
+    a single block floors to zero: the run would sample nothing yet still
+    report completion -- a silent no-op the user never asked for. Reject that
+    here so the misconfiguration fails before any sampling work.
+
+    Only ``run`` uses this. ``resume`` and ``measure`` legitimately reach zero
+    remaining cycles when already at target, so they keep their own
+    accounting.
+
+    Args:
+        n_trials_per_walker: Per-walker trial budget from the WL config.
+        block_size: Steps per cycle, ``n_atoms * block_size_sweeps``.
+
+    Returns:
+        The number of whole cycles, always >= 1.
+
+    Raises:
+        ValueError: if the budget is smaller than one block.
+    """
+    n_cycles = n_trials_per_walker // block_size
+    if n_cycles == 0:
+        raise ValueError(
+            f"n_trials_per_walker ({n_trials_per_walker}) is smaller than one "
+            f"block ({block_size} steps), so no WL cycles would run. Increase "
+            f"n_trials_per_walker or reduce block_size_sweeps."
+        )
+    return n_cycles
+
+
 def _build_ensemble_kwargs(cfg: RewlConfig, moves, n_atoms: int) -> dict:
     block_size = n_atoms * cfg.wl.block_size_sweeps
     # icet's BaseEnsemble does `step % trajectory_write_interval` unguarded
@@ -92,7 +141,7 @@ def run(cfg: RewlConfig, *, force: bool = False) -> None:
 
     atoms_gs, n_atoms, _, ensemble_kwargs = build_moves_and_kwargs(cfg, ce)
     block_size = n_atoms * cfg.wl.block_size_sweeps
-    n_cycles_target = cfg.wl.n_trials_per_walker // block_size
+    n_cycles_target = _cycles_target(cfg.wl.n_trials_per_walker, block_size)
     n_windows = len(cfg.windows.list)
     _status(
         f"L={cfg.system.n_sc}: {n_atoms} atoms; "
@@ -166,6 +215,7 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
     """Resume a previously-checkpointed REWL run."""
     from mchammer_pt.history import ExchangeHistory, read_hdf5
 
+    _validate_extra_cycles(extra_cycles)
     cwd = Path.cwd()
     checkpoint_path = cwd / cfg.checkpoint.filename
     if not checkpoint_path.exists():

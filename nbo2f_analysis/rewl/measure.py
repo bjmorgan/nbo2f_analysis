@@ -29,7 +29,11 @@ from mchammer_pt.wl import WangLandauParallelTempering
 
 from nbo2f_analysis.chain_order_observer import build_chain_order_observer
 from nbo2f_analysis.rewl.config import RewlConfig, resolve_ce_path
-from nbo2f_analysis.rewl.run import _status, build_moves_and_kwargs
+from nbo2f_analysis.rewl.run import (
+    _status,
+    _validate_extra_cycles,
+    build_moves_and_kwargs,
+)
 
 
 def measure(
@@ -61,6 +65,7 @@ def measure(
             different bytes despite identical physics.
 
     Raises:
+        ValueError: if ``extra_cycles`` is negative.
         RuntimeError: if ``cfg`` has no ``measurement`` section, or if the
             DOS checkpoint does not exist.
     """
@@ -68,6 +73,7 @@ def measure(
         raise RuntimeError(
             "config has no 'measurement' section; `rewl measure` requires one."
         )
+    _validate_extra_cycles(extra_cycles)
     meas = cfg.measurement  # local binding: keeps the None-narrowing across calls
     cwd = Path.cwd()
     dos_ckpt = cwd / cfg.checkpoint.filename
