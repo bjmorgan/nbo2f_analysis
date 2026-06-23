@@ -46,7 +46,7 @@ def test_oof_amp_random_known_values():
     assert sor.oof_amp_random(12) == pytest.approx(0.1206, abs=1e-4)
 
 
-@pytest.mark.parametrize("n_sc", [3, 6])
+@pytest.mark.parametrize("n_sc", [3, 6, 9])
 def test_ground_state_anchors_exact(n_sc):
     # L-independent P3_121 anchors, verified against the production observer.
     # chi_11 = 4/9 (not 1): an orbit and its enantiomer share 5/9 of sites.
@@ -163,3 +163,63 @@ def test_write_csv_has_provenance_header_and_rows():
     body = [ln for ln in out.splitlines() if not ln.startswith("#")]
     assert body[0] == "op,n_sc,analytic_random,mc_mean,mc_sem,ground_state"
     assert body[1].startswith("oof_amp,3,")
+
+
+def test_monte_carlo_raises_on_non_finite_op(monkeypatch):
+    # A fixed-composition config can leave a whole chain direction without
+    # period-3 structure, making icoh_global undefined (NaN). The reference
+    # must surface that loudly, not average a NaN into the citable table.
+    class _NaNObserver:
+        def get_observable(self, atoms):
+            return {"icoh_global": float("nan")}
+
+    monkeypatch.setattr(
+        sor, "build_chain_order_observer", lambda *a, **k: _NaNObserver()
+    )
+    with pytest.raises(ValueError, match="non-finite"):
+        sor.monte_carlo_random_reference(3, 2, seed=0, ops=("icoh_global",))
+
+
+def test_monte_carlo_accepts_two_samples():
+    # Two samples is the first count with a defined SEM; a <=2 vs <2
+    # off-by-one in the guard would wrongly reject it.
+    mean, sem = sor.monte_carlo_random_reference(
+        3, 2, seed=0, ops=("collinear_ff",)
+    )["collinear_ff"]
+    assert math.isfinite(mean)
+    assert math.isfinite(sem)
+
+
+def test_analytic_random_rejects_unknown_op():
+    # _analytic_random routes every REFERENCE_OP explicitly; an unrouted op
+    # raises rather than silently taking the wrong default.
+    with pytest.raises(KeyError):
+        sor._analytic_random("not_an_op", 6, sor.random_local_limits())
+
+
+def test_reference_table_orders_by_size_and_repeats_ground_state():
+    rows = sor.reference_table((3, 6), 2, seed=0)
+    n_ops = len(sor.REFERENCE_OPS)
+    # Size-major order: all of size 3 (in REFERENCE_OPS order), then size 6.
+    assert [r["n_sc"] for r in rows] == [3] * n_ops + [6] * n_ops
+    assert [r["op"] for r in rows[:n_ops]] == list(sor.REFERENCE_OPS)
+    # The ground-state column is L-independent, so it repeats across blocks.
+    gs3 = {r["op"]: r["ground_state"] for r in rows[:n_ops]}
+    gs6 = {r["op"]: r["ground_state"] for r in rows[n_ops:]}
+    for op in sor.REFERENCE_OPS:
+        assert gs6[op] == pytest.approx(gs3[op], abs=1e-9)
+
+
+def test_emit_csv_wires_table_and_provenance():
+    # Smoke the main() wiring on a tiny grid: the defaults route through
+    # reference_table and write_csv, and the run parameters are recorded
+    # faithfully (a swapped seed/n_samples would show here).
+    buf = io.StringIO()
+    sor._emit_csv((3,), 2, 0, buf)
+    out = buf.getvalue()
+    assert out.startswith("# nbo2f-analysis")
+    assert "n_samples=2" in out
+    assert "seed=0" in out
+    lines = out.splitlines()
+    assert "op,n_sc,analytic_random,mc_mean,mc_sem,ground_state" in lines
+    assert any(line.startswith("oof_amp,3,") for line in lines)

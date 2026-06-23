@@ -31,7 +31,10 @@ from nbo2f_analysis.ce_tools import (
     atoms_from_f_mask_stable,
     build_tiled_groundstate_atoms,
 )
-from nbo2f_analysis.chain_order_observer import build_chain_order_observer
+from nbo2f_analysis.chain_order_observer import (
+    ALLOWED_OPS,
+    build_chain_order_observer,
+)
 
 # The OPs this module references, in CSV row order: the four manuscript
 # structural OPs, plus collinear_ff and the chiral chi_11.
@@ -39,6 +42,15 @@ REFERENCE_OPS: tuple[str, ...] = (
     "oof_amp", "icoh_global", "cis_frac", "nbo4f2_frac", "collinear_ff",
     "chi_11",
 )
+
+# Every referenced OP must be recordable by the observer, otherwise
+# build_chain_order_observer would reject it deep in its constructor. Fail at
+# import, mirroring chain_order_observer's own _SIMILARITY_OPS subset check.
+if not set(REFERENCE_OPS) <= ALLOWED_OPS:
+    raise RuntimeError(
+        "REFERENCE_OPS contains names absent from ALLOWED_OPS: "
+        f"{sorted(set(REFERENCE_OPS) - ALLOWED_OPS)}"
+    )
 
 # NbO2F composition: one third of the anions are F.
 DEFAULT_F: Fraction = Fraction(1, 3)
@@ -91,9 +103,9 @@ def oof_amp_random(n_sc: int, f: float = 1 / 3) -> float:
 
         <oof_amp> = 0.5 * sqrt(pi * f * (1 - f) / N),
 
-    which decays to 0 as N -> inf. Here N is the supercell side ``n_sc``.
-    Checks against the production observer: L6 0.171 (MC 0.166), L9 0.139
-    (0.139), L12 0.121 (0.119).
+    which decays to 0 as N -> inf. Here N is the supercell side ``n_sc``; the
+    cell is cubic, so every chain has length N. At f = 1/3 the floor is
+    0.171, 0.139 and 0.121 at L = 6, 9 and 12.
 
     Args:
         n_sc: Supercell side (the chain length N).
@@ -159,10 +171,12 @@ def monte_carlo_random_reference(
         ops: OPs to evaluate; defaults to :data:`REFERENCE_OPS`.
 
     Returns:
-        ``{op: (mean, sem)}`` over the samples, sem = std / sqrt(n_samples).
+        ``{op: (mean, sem)}`` over the samples, where sem is the sample
+        standard deviation (ddof=1) divided by sqrt(n_samples).
 
     Raises:
-        ValueError: if ``n_samples`` < 2.
+        ValueError: if ``n_samples`` < 2, or if the observer returns a
+            non-finite value for any sampled configuration.
     """
     if n_samples < 2:
         raise ValueError(
@@ -175,7 +189,17 @@ def monte_carlo_random_reference(
         mask = _random_fixed_composition_mask(n_sc, rng)
         out = observer.get_observable(atoms_from_f_mask_stable(n_sc, mask))
         for op in ops:
-            samples[op][s] = out[op]
+            value = out[op]
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"observer returned a non-finite {op} ({value!r}) for "
+                    f"sample {s} at n_sc={n_sc}, seed={seed}. icoh_global is "
+                    f"undefined when a configuration leaves a whole chain "
+                    f"direction without period-3 structure, which is reachable "
+                    f"at small n_sc; a silent NaN would otherwise poison the "
+                    f"whole batch. Choose a different seed or size."
+                )
+            samples[op][s] = value
     return {
         op: (float(v.mean()), float(v.std(ddof=1) / math.sqrt(n_samples)))
         for op, v in samples.items()
@@ -194,6 +218,9 @@ def _analytic_random(op: str, n_sc: int, local: dict[str, Fraction]) -> float:
     if op == "oof_amp":
         return oof_amp_random(n_sc)
     if op in ("icoh_global", "chi_11"):
+        # Only ops whose true random limit is exactly 0 belong here; an op
+        # with a non-zero limit needs its own branch above rather than
+        # silently taking this 0.0.
         return 0.0
     raise KeyError(f"no analytic random reference for {op!r}")
 
@@ -285,16 +312,27 @@ def write_csv(
     writer.writerows(rows)
 
 
+def _emit_csv(
+    sizes: tuple[int, ...], n_samples: int, seed: int, file: TextIO
+) -> None:
+    """Build the reference table and write it, with provenance, to ``file``.
+
+    The wiring ``main`` drives, factored out so it can be exercised on a tiny
+    grid without the full default run.
+
+    Args:
+        sizes: Supercell sides to tabulate.
+        n_samples: MC samples per size.
+        seed: MC RNG seed.
+        file: Open text stream to write the CSV to.
+    """
+    rows = reference_table(sizes, n_samples, seed=seed)
+    write_csv(rows, file, provenance=provenance_lines(sizes, n_samples, seed))
+
+
 def main() -> None:
     """Emit the reference table as a provenance-headed CSV on stdout."""
-    rows = reference_table(DEFAULT_SIZES, DEFAULT_N_SAMPLES, seed=DEFAULT_SEED)
-    write_csv(
-        rows,
-        sys.stdout,
-        provenance=provenance_lines(
-            DEFAULT_SIZES, DEFAULT_N_SAMPLES, DEFAULT_SEED
-        ),
-    )
+    _emit_csv(DEFAULT_SIZES, DEFAULT_N_SAMPLES, DEFAULT_SEED, sys.stdout)
 
 
 if __name__ == "__main__":
