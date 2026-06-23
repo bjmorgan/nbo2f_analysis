@@ -205,10 +205,11 @@ class ChainOrderObserver(BaseObserver):
       improper tilings.
     - ``closest_sim``: maximum similarity to any of the 12 orbits.
     - ``closest_chi``: signed enantiomeric similarity of the closest orbit.
-      At an exact similarity tie between opposite-handed orbits the
-      lowest-labelled orbit wins, so ``closest_chi``'s sign is arbitrary at a
-      tie; ``chi_11`` (fixed to one orbit) is the order parameter to use for
-      Binder-cumulant analysis.
+      At an exact similarity tie the lowest-labelled orbit wins, so
+      ``closest_chi`` then reflects only that one orbit's split: its
+      magnitude depends on which tied orbit wins, and its sign additionally
+      flips when the tied orbits are opposite-handed. Use ``chi_11`` (fixed
+      to one orbit) for Binder-cumulant analysis.
 
     ``get_observable`` returns only the order parameters named in ``ops``.
     The structure must be in stable Nb-first ordering (as produced by
