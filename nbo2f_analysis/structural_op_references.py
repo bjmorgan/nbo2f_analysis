@@ -18,20 +18,8 @@ with F placed at random; ground state = the tiled chiral P3_121 ordering.
 """
 from __future__ import annotations
 
-import csv
-import importlib.metadata
 import math
-import sys
 from fractions import Fraction
-from typing import TextIO
-
-import numpy as np
-
-from nbo2f_analysis.ce_tools import (
-    atoms_from_f_mask_stable,
-    build_tiled_groundstate_atoms,
-)
-from nbo2f_analysis.chain_order_observer import build_chain_order_observer
 
 # The OPs this module references, in CSV row order: the four manuscript
 # structural OPs, plus collinear_ff and the chiral chi_11.
@@ -41,7 +29,7 @@ REFERENCE_OPS: tuple[str, ...] = (
 )
 
 # NbO2F composition: one third of the anions are F.
-DEFAULT_F = Fraction(1, 3)
+DEFAULT_F: Fraction = Fraction(1, 3)
 
 
 def random_local_limits(f: Fraction = DEFAULT_F) -> dict[str, Fraction]:

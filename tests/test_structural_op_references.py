@@ -1,8 +1,6 @@
 """Tests for the structural OP reference values."""
 from __future__ import annotations
 
-import importlib.metadata
-import io
 import math
 from fractions import Fraction
 
@@ -31,12 +29,13 @@ def test_random_local_limits_general_f():
     }
 
 
-def test_oof_amp_random_matches_formula():
-    # Equals 0.5 * sqrt(pi f (1-f) / L) at f = 1/3 for several sizes.
-    for n_sc in (6, 9, 12):
-        assert sor.oof_amp_random(n_sc) == pytest.approx(
-            0.5 * math.sqrt(math.pi * (1 / 3) * (2 / 3) / n_sc)
-        )
+def test_oof_amp_random_decays_as_inverse_sqrt_size():
+    # The floor decays as N^{-1/2}, so oof_amp_random(N) * sqrt(N) is
+    # size-independent -- an independent check of the scaling, distinct from
+    # the MC-anchored value test below.
+    assert sor.oof_amp_random(4) * math.sqrt(4) == pytest.approx(
+        sor.oof_amp_random(9) * math.sqrt(9)
+    )
 
 
 def test_oof_amp_random_known_values():
