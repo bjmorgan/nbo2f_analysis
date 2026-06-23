@@ -190,14 +190,16 @@ def monte_carlo_random_reference(
         out = observer.get_observable(atoms_from_f_mask_stable(n_sc, mask))
         for op in ops:
             value = out[op]
+            # icoh_global is the only OP that can be non-finite today: it is
+            # undefined when a configuration leaves a whole chain direction
+            # without period-3 structure (reachable at small n_sc), so
+            # inter_chain_correlation returns NaN. The guard stays generic so a
+            # NaN from any source fails loudly rather than poisoning the batch.
             if not math.isfinite(value):
                 raise ValueError(
                     f"observer returned a non-finite {op} ({value!r}) for "
-                    f"sample {s} at n_sc={n_sc}, seed={seed}. icoh_global is "
-                    f"undefined when a configuration leaves a whole chain "
-                    f"direction without period-3 structure, which is reachable "
-                    f"at small n_sc; a silent NaN would otherwise poison the "
-                    f"whole batch. Choose a different seed or size."
+                    f"sample {s} at n_sc={n_sc}, seed={seed}. Choose a "
+                    f"different seed or size."
                 )
             samples[op][s] = value
     return {
