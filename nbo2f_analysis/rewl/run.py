@@ -42,6 +42,22 @@ def _status(*args: object) -> None:
     print(*args, flush=True)
 
 
+def _validate_extra_cycles(extra_cycles: int | None) -> None:
+    """Reject a negative explicit ``--extra-cycles`` count.
+
+    Shared by ``resume`` and ``measure``, which both treat ``extra_cycles``
+    as an override for the auto-computed remainder. A negative override would
+    otherwise fall through to the ``n_extra <= 0`` no-op branch and report
+    "nothing to run" -- a misleading success that silently does no work after
+    the user explicitly asked for more cycles. ``None`` (auto-remainder) and
+    ``0`` (an explicit no-op) are left to the normal accounting.
+    """
+    if extra_cycles is not None and int(extra_cycles) < 0:
+        raise ValueError(
+            f"extra_cycles must not be negative when given, got {extra_cycles}"
+        )
+
+
 def _build_ensemble_kwargs(cfg: RewlConfig, moves, n_atoms: int) -> dict:
     block_size = n_atoms * cfg.wl.block_size_sweeps
     # icet's BaseEnsemble does `step % trajectory_write_interval` unguarded
@@ -166,6 +182,7 @@ def resume(cfg: RewlConfig, *, extra_cycles: int | None = None) -> None:
     """Resume a previously-checkpointed REWL run."""
     from mchammer_pt.history import ExchangeHistory, read_hdf5
 
+    _validate_extra_cycles(extra_cycles)
     cwd = Path.cwd()
     checkpoint_path = cwd / cfg.checkpoint.filename
     if not checkpoint_path.exists():

@@ -164,6 +164,18 @@ def test_resume_extra_cycles_overrides_auto_count(
     assert spy.run_calls == [7]
 
 
+def test_resume_negative_extra_cycles_rejected(
+    tmp_path, monkeypatch, write_min_cfg
+):
+    # A negative explicit count is a usage error: without the guard it falls
+    # into the no-op branch and reports "already at target", silently doing
+    # no work while the user asked for more cycles.
+    cfg = load_yaml(write_min_cfg(""))
+    _install_resume_stubs(monkeypatch, tmp_path, last_step=50)
+    with pytest.raises(ValueError, match="negative"):
+        run_mod.resume(cfg, extra_cycles=-3)
+
+
 def test_resume_tolerates_off_block_walker_step(
     tmp_path, monkeypatch, write_min_cfg
 ):
