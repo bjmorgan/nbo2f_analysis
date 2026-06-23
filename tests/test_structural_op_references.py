@@ -74,3 +74,47 @@ def test_monte_carlo_converges_to_local_limits():
     for op, exact in limits.items():
         mean, sem = ref[op]
         assert abs(mean - float(exact)) <= 5 * sem, (op, mean, float(exact), sem)
+
+
+@pytest.mark.slow
+def test_monte_carlo_oof_matches_rayleigh_floor():
+    # The Rayleigh floor is the leading-order (large-L, independent-site)
+    # prediction. At L = 6 the fixed-composition MC mean sits a few
+    # thousandths below it (canonical sampling plus the O(1/L) correction),
+    # and that systematic gap does not shrink with sample count, so compare
+    # to the floor within an absolute tolerance that brackets it. The bound
+    # still excludes a wrong formula -- a factor-of-2 error would land near
+    # 0.085 or 0.34, far outside it.
+    ref = sor.monte_carlo_random_reference(6, 400, seed=0, ops=("oof_amp",))
+    mean, _ = ref["oof_amp"]
+    assert mean == pytest.approx(sor.oof_amp_random(6), abs=0.01)
+
+
+@pytest.mark.slow
+def test_random_oof_and_icoh_decrease_with_size():
+    # Both vanishing OPs decay towards 0 with size. Asserting a monotone
+    # decrease (not a fitted exponent) is robust to sampling noise; the L
+    # gaps are far larger than the SEM at this sample count.
+    oof, icoh = [], []
+    for n_sc in (3, 6, 9):
+        ref = sor.monte_carlo_random_reference(
+            n_sc, 100, seed=0, ops=("oof_amp", "icoh_global"),
+        )
+        oof.append(ref["oof_amp"][0])
+        icoh.append(ref["icoh_global"][0])
+    assert oof[0] > oof[1] > oof[2]
+    assert icoh[0] > icoh[1] > icoh[2]
+
+
+@pytest.mark.slow
+def test_chi_11_mean_near_zero_and_rms_decreases():
+    # <chi_11> ~ 0 by Z2 symmetry, and its fluctuation scale shrinks with
+    # size. At fixed n_samples the returned SEM is proportional to the RMS
+    # (the mean is ~ 0), so a decreasing SEM witnesses the decreasing RMS.
+    ref3 = sor.monte_carlo_random_reference(3, 150, seed=0, ops=("chi_11",))
+    ref6 = sor.monte_carlo_random_reference(6, 150, seed=0, ops=("chi_11",))
+    mean3, sem3 = ref3["chi_11"]
+    mean6, sem6 = ref6["chi_11"]
+    assert abs(mean3) <= 4 * sem3
+    assert abs(mean6) <= 4 * sem6
+    assert sem3 > sem6
