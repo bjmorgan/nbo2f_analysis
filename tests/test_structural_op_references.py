@@ -1,6 +1,8 @@
 """Tests for the structural OP reference values."""
 from __future__ import annotations
 
+import importlib.metadata
+import io
 import math
 from fractions import Fraction
 
@@ -137,3 +139,27 @@ def test_reference_table_smoke():
     # ground_state column carries the exact anchors.
     assert by_op["icoh_global"]["ground_state"] == pytest.approx(1.0, abs=1e-9)
     assert by_op["collinear_ff"]["ground_state"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_provenance_lines_record_versions():
+    lines = sor.provenance_lines((6,), 10, 0)
+    text = "\n".join(lines)
+    assert all(line.startswith("#") for line in lines)
+    assert importlib.metadata.version("nbo2f-analysis") in text
+    assert importlib.metadata.version("chainorder") in text
+    assert "n_samples=10" in text
+    assert "seed=0" in text
+
+
+def test_write_csv_has_provenance_header_and_rows():
+    rows = [
+        {"op": "oof_amp", "n_sc": 3, "analytic_random": 0.24,
+         "mc_mean": 0.2, "mc_sem": 0.01, "ground_state": 0.3333},
+    ]
+    buf = io.StringIO()
+    sor.write_csv(rows, buf, provenance=["# nbo2f-analysis 0.11.0"])
+    out = buf.getvalue()
+    assert out.startswith("# nbo2f-analysis 0.11.0\n")
+    body = [ln for ln in out.splitlines() if not ln.startswith("#")]
+    assert body[0] == "op,n_sc,analytic_random,mc_mean,mc_sem,ground_state"
+    assert body[1].startswith("oof_amp,3,")

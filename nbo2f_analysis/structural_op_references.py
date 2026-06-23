@@ -18,8 +18,12 @@ with F placed at random; ground state = the tiled chiral P3_121 ordering.
 """
 from __future__ import annotations
 
+import csv
+import importlib.metadata
 import math
+import sys
 from fractions import Fraction
+from typing import TextIO
 
 import numpy as np
 
@@ -226,3 +230,56 @@ def reference_table(
                 "ground_state": gs[op],
             })
     return rows
+
+
+_CSV_FIELDS = ("op", "n_sc", "analytic_random", "mc_mean", "mc_sem",
+               "ground_state")
+
+# Defaults for the standalone CSV script. The size grid and sample count are
+# module constants (no CLI): edit here or call reference_table directly for
+# other grids.
+DEFAULT_SIZES = (6, 9, 12)
+DEFAULT_N_SAMPLES = 500
+DEFAULT_SEED = 0
+
+
+def provenance_lines(
+    sizes: tuple[int, ...], n_samples: int, seed: int
+) -> list[str]:
+    """Commented header lines recording versions and run parameters.
+
+    Embedding the provenance as leading ``#`` lines keeps the version and
+    parameter record travelling with the citable CSV.
+    """
+    return [
+        f"# nbo2f-analysis {importlib.metadata.version('nbo2f-analysis')}",
+        f"# chainorder {importlib.metadata.version('chainorder')}",
+        f"# f_F=1/3 sizes={list(sizes)} n_samples={n_samples} seed={seed}",
+    ]
+
+
+def write_csv(
+    rows: list[dict[str, object]], file: TextIO, *, provenance: list[str]
+) -> None:
+    """Write the provenance comment lines, then the CSV table, to ``file``."""
+    for line in provenance:
+        file.write(line + "\n")
+    writer = csv.DictWriter(file, fieldnames=_CSV_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+
+
+def main() -> None:
+    """Emit the reference table as a provenance-headed CSV on stdout."""
+    rows = reference_table(DEFAULT_SIZES, DEFAULT_N_SAMPLES, seed=DEFAULT_SEED)
+    write_csv(
+        rows,
+        sys.stdout,
+        provenance=provenance_lines(
+            DEFAULT_SIZES, DEFAULT_N_SAMPLES, DEFAULT_SEED
+        ),
+    )
+
+
+if __name__ == "__main__":
+    main()
