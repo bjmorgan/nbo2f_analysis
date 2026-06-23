@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-06-23
+
+### Added
+
+- `nbo2f_analysis.structural_op_references`: tested random/limiting and
+  exact ground-state reference values for the manuscript structural order
+  parameters, for the chirality paper's supporting data, with the closed
+  forms pinned by tests against the production `ChainOrderObserver`.
+  `random_local_limits` gives the exact independent-site limits as
+  `Fraction`s (NbO4F2 = C(6,2) f^2 (1-f)^4 = 80/243, cis = 12 f^2 (1-f)^4 =
+  64/243, collinear_ff = f^2 = 1/9 at f_F = 1/3); `oof_amp_random` gives the
+  Rayleigh floor 0.5 sqrt(pi f (1-f) / n_sc) of the random period-3
+  amplitude; `ground_state_reference` returns the exact P3_121 anchors
+  (chi_11 = 4/9, icoh_global = 1, oof_amp = 1/3, cis_frac = nbo4f2_frac = 1,
+  collinear_ff = 0) through the production observer; and
+  `monte_carlo_random_reference` returns the (mean, SEM) per OP over random
+  fixed-composition masks. `reference_table` assembles the
+  analytic-vs-Monte-Carlo-vs-ground-state table, and
+  `python -m nbo2f_analysis.structural_op_references` emits it as a
+  provenance-headed CSV for the supporting data.
+
 ## [0.11.0] - 2026-06-22
 
 ### Changed
