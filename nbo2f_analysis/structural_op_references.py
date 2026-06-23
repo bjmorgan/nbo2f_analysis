@@ -78,3 +78,28 @@ def random_local_limits(f: Fraction = DEFAULT_F) -> dict[str, Fraction]:
         "cis_frac": n_cis * placement,
         "collinear_ff": f**2,
     }
+
+
+def oof_amp_random(n_sc: int, f: float = 1 / 3) -> float:
+    """Rayleigh floor of the random period-3 Fourier magnitude ``oof_amp``.
+
+    ``chainorder.order_params.chain_fft`` normalises by the chain length N,
+    so the period-3 (k = N/3) coefficient of a random chain has zero-mean
+    real and imaginary parts, each with variance f(1 - f)/(2N) and zero
+    covariance. Its magnitude is therefore Rayleigh-distributed with mean
+    sigma * sqrt(pi/2), i.e.
+
+        <oof_amp> = 0.5 * sqrt(pi * f * (1 - f) / N),
+
+    which decays to 0 as N -> inf. Here N is the supercell side ``n_sc``.
+    Checks against the production observer: L6 0.171 (MC 0.166), L9 0.139
+    (0.139), L12 0.121 (0.119).
+
+    Args:
+        n_sc: Supercell side (the chain length N).
+        f: F fraction. Defaults to 1/3.
+
+    Returns:
+        The expected random ``oof_amp`` at this size.
+    """
+    return 0.5 * math.sqrt(math.pi * f * (1 - f) / n_sc)

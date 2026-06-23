@@ -29,3 +29,17 @@ def test_random_local_limits_general_f():
         "cis_frac": Fraction(3, 16),
         "collinear_ff": Fraction(1, 4),
     }
+
+
+def test_oof_amp_random_matches_formula():
+    # Equals 0.5 * sqrt(pi f (1-f) / L) at f = 1/3 for several sizes.
+    for n_sc in (6, 9, 12):
+        assert sor.oof_amp_random(n_sc) == pytest.approx(
+            0.5 * math.sqrt(math.pi * (1 / 3) * (2 / 3) / n_sc)
+        )
+
+
+def test_oof_amp_random_known_values():
+    # The MC-verified floor: 0.171 at L=6, 0.121 at L=12.
+    assert sor.oof_amp_random(6) == pytest.approx(0.1706, abs=1e-4)
+    assert sor.oof_amp_random(12) == pytest.approx(0.1206, abs=1e-4)
