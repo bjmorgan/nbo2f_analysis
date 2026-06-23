@@ -42,3 +42,39 @@ REFERENCE_OPS: tuple[str, ...] = (
 
 # NbO2F composition: one third of the anions are F.
 DEFAULT_F = Fraction(1, 3)
+
+
+def random_local_limits(f: Fraction = DEFAULT_F) -> dict[str, Fraction]:
+    """Exact independent-site random limits of the local-coordination OPs.
+
+    At fixed composition f_F = f with F placed at random, each octahedral
+    vertex is independently F with probability f in the large-cell limit
+    (fixed-composition finite-size corrections are O(1/L) and vanish). The
+    closed forms follow from counting:
+
+    - ``nbo4f2_frac`` = P(exactly 2 of the 6 octahedral vertices are F)
+      = C(6, 2) f^2 (1 - f)^4.
+    - ``cis_frac`` = that, restricted to cis placements. The 6 vertices form
+      3 trans (opposite-axis) pairs, so of the C(6, 2) = 15 two-F placements
+      3 are trans and 12 are cis: cis_frac = 12 f^2 (1 - f)^4.
+    - ``collinear_ff`` = P(two adjacent chain sites are both F) = f^2 (the
+      (1, 1) 2-motif frequency along a chain).
+
+    At f = 1/3 these are 80/243, 64/243 and 1/9.
+
+    Args:
+        f: F fraction, an exact ``Fraction``. Defaults to 1/3.
+
+    Returns:
+        Exact ``Fraction`` values keyed by observer OP name
+        (``nbo4f2_frac``, ``cis_frac``, ``collinear_ff``).
+    """
+    f = Fraction(f)
+    placement = f**2 * (1 - f) ** 4   # probability of one specific 2-F-of-6 set
+    n_two_f = math.comb(6, 2)         # 15 ways to place 2 F on 6 vertices
+    n_cis = n_two_f - 3               # 12 cis (3 of the 15 are trans pairs)
+    return {
+        "nbo4f2_frac": n_two_f * placement,
+        "cis_frac": n_cis * placement,
+        "collinear_ff": f**2,
+    }
