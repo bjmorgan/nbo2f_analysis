@@ -55,3 +55,22 @@ def test_ground_state_anchors_exact(n_sc):
     assert gs["cis_frac"] == pytest.approx(1.0, abs=1e-9)
     assert gs["nbo4f2_frac"] == pytest.approx(1.0, abs=1e-9)
     assert gs["collinear_ff"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_monte_carlo_requires_two_samples():
+    # A standard error of the mean is undefined below two samples.
+    with pytest.raises(ValueError, match="n_samples"):
+        sor.monte_carlo_random_reference(3, 1, seed=0)
+
+
+def test_monte_carlo_converges_to_local_limits():
+    # At L = 6 the MC means of the local-coordination OPs sit within a few
+    # SEM of their exact independent-site limits. Restrict ops to the local
+    # ones so the expensive chi_11 similarity loop is not run.
+    limits = sor.random_local_limits()
+    ref = sor.monte_carlo_random_reference(
+        6, 200, seed=0, ops=("cis_frac", "nbo4f2_frac", "collinear_ff"),
+    )
+    for op, exact in limits.items():
+        mean, sem = ref[op]
+        assert abs(mean - float(exact)) <= 5 * sem, (op, mean, float(exact), sem)

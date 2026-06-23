@@ -21,7 +21,12 @@ from __future__ import annotations
 import math
 from fractions import Fraction
 
-from nbo2f_analysis.ce_tools import build_tiled_groundstate_atoms
+import numpy as np
+
+from nbo2f_analysis.ce_tools import (
+    atoms_from_f_mask_stable,
+    build_tiled_groundstate_atoms,
+)
 from nbo2f_analysis.chain_order_observer import build_chain_order_observer
 
 # The OPs this module references, in CSV row order: the four manuscript
@@ -117,3 +122,57 @@ def ground_state_reference(n_sc: int) -> dict[str, float]:
     """
     observer = build_chain_order_observer(n_sc, interval=1, ops=REFERENCE_OPS)
     return observer.get_observable(build_tiled_groundstate_atoms(n_sc=n_sc))
+
+
+def _random_fixed_composition_mask(
+    n_sc: int, rng: np.random.Generator
+) -> np.ndarray:
+    """Boolean F-mask with exactly n_sc**3 F on 3 * n_sc**3 anion sites."""
+    n_anion = 3 * n_sc**3
+    mask = np.zeros(n_anion, dtype=bool)
+    mask[rng.choice(n_anion, size=n_sc**3, replace=False)] = True
+    return mask
+
+
+def monte_carlo_random_reference(
+    n_sc: int,
+    n_samples: int,
+    *,
+    seed: int,
+    ops: tuple[str, ...] = REFERENCE_OPS,
+) -> dict[str, tuple[float, float]]:
+    """Monte-Carlo random reference: (mean, SEM) per OP via the observer.
+
+    Draws ``n_samples`` random fixed-composition (f_F = 1/3) F-masks, builds
+    each as a stable-ordered structure (the ordering the observer's
+    cis/NbO4F2 branch requires), and evaluates the production observer.
+    ``chi_11`` is signed and averages to ~0 by Z2 symmetry.
+
+    Args:
+        n_sc: Supercell side (a multiple of 3).
+        n_samples: Number of random configurations; >= 2 for a defined SEM.
+        seed: Seed for the configuration RNG.
+        ops: OPs to evaluate; defaults to :data:`REFERENCE_OPS`.
+
+    Returns:
+        ``{op: (mean, sem)}`` over the samples, sem = std / sqrt(n_samples).
+
+    Raises:
+        ValueError: if ``n_samples`` < 2.
+    """
+    if n_samples < 2:
+        raise ValueError(
+            f"n_samples must be >= 2 for a defined SEM, got {n_samples}"
+        )
+    observer = build_chain_order_observer(n_sc, interval=1, ops=ops)
+    rng = np.random.default_rng(seed)
+    samples = {op: np.empty(n_samples) for op in ops}
+    for s in range(n_samples):
+        mask = _random_fixed_composition_mask(n_sc, rng)
+        out = observer.get_observable(atoms_from_f_mask_stable(n_sc, mask))
+        for op in ops:
+            samples[op][s] = out[op]
+    return {
+        op: (float(v.mean()), float(v.std(ddof=1) / math.sqrt(n_samples)))
+        for op, v in samples.items()
+    }
