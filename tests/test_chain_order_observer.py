@@ -314,3 +314,18 @@ def test_chirality_sign_tracks_chi_11_across_orbits(refs):
             assert product == relation, i
             n_compared += 1
     assert n_compared >= 8  # the chiral orbits were actually compared
+
+
+def test_apply_spacegroup_op_inversion_offset_convention():
+    # Reuse chainorder's worked example, pinned independently here: a single F
+    # on sublattice 0 at (1, 1, 0) in an N=4 grid, under physical inversion
+    # (perm identity, all signs negative), must land on sublattice 0 at
+    # (2, 3, 0). This fixes the half-integer-axis offset (c -> N-1-c on the
+    # sublattice's own axis, c -> -c mod N on the others). No chainorder
+    # import: both packages match the same physical destination, so neither can
+    # drift.
+    n = 4
+    grid = np.zeros((3, n, n, n), dtype=int)
+    grid[0, 1, 1, 0] = 1
+    out = _apply_spacegroup_op(grid, perm=(0, 1, 2), signs=(-1, -1, -1))
+    assert np.argwhere(out).tolist() == [[0, 2, 3, 0]]
