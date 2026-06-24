@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from chainorder import SublatticeOccupation, order_params
 
 from nbo2f_analysis.ce_tools import (
     atoms_from_f_mask_stable,
     build_tiled_groundstate_atoms,
+    load_orbit_rep,
     nb_anion_neighbours,
+    _f_mask_from_atoms,
 )
 from nbo2f_analysis.chain_order_observer import (
     ALLOWED_OPS,
@@ -242,3 +245,26 @@ def test_build_chain_order_observer_constructs_working_observer():
     assert obs.interval == 5
     out = obs.get_observable(build_tiled_groundstate_atoms(n_sc=3))
     assert out == pytest.approx({"oof_amp": 0.3333333333333333}, abs=1e-9)
+
+
+def test_chirality_matches_circulation_invariants(refs):
+    # The observer forwards chainorder's projected invariants unchanged. A
+    # random (non-GS) config makes this a genuine pass-through check, not a
+    # match to the 1/4 anchor.
+    obs = ChainOrderObserver(3, 1, refs, ops=("chirality", "circ_coherence"))
+    atoms = _random_stable_atoms_n3()
+    out = obs.get_observable(atoms)
+    occ = SublatticeOccupation.from_atoms(atoms, N=3, species="F")
+    ci = order_params.circulation_invariants(occ, period=3)
+    assert out["chirality"] == pytest.approx(ci.chirality, abs=1e-12)
+    assert out["circ_coherence"] == pytest.approx(ci.coherence, abs=1e-12)
+
+
+@pytest.mark.parametrize("n_sc", [3, 6])
+def test_circulation_ground_state_is_one_quarter(refs, n_sc):
+    # The tiled P3_121 ground state pins both projected invariants to 1/4,
+    # L-independently. chirality is positive at the orbit-11 handedness.
+    obs = ChainOrderObserver(n_sc, 1, refs, ops=("chirality", "circ_coherence"))
+    out = obs.get_observable(build_tiled_groundstate_atoms(n_sc=n_sc))
+    assert out["chirality"] == pytest.approx(1 / 4, abs=1e-9)
+    assert out["circ_coherence"] == pytest.approx(1 / 4, abs=1e-9)

@@ -34,6 +34,7 @@ from nbo2f_analysis.ce_tools import cis_fraction, load_orbit_rep, nbo4f2_fractio
 ALLOWED_OPS: frozenset[str] = frozenset({
     "chi_11", "closest_chi", "closest_sim", "icoh_global",
     "icoh_nn", "oof_amp", "cis_frac", "nbo4f2_frac", "collinear_ff",
+    "chirality", "circ_coherence",
 })
 
 # Order parameters that require the (expensive) per-orbit similarity loop.
@@ -48,6 +49,22 @@ if not (_SIMILARITY_OPS <= ALLOWED_OPS):
     raise RuntimeError(
         "_SIMILARITY_OPS contains names absent from ALLOWED_OPS: "
         f"{sorted(_SIMILARITY_OPS - ALLOWED_OPS)}"
+    )
+
+# Order parameters that require the (expensive) Reynolds projection over the
+# 48 cubic point operations performed by
+# ``chainorder.order_params.circulation_invariants``.
+_PROJECTION_OPS: frozenset[str] = frozenset({
+    "chirality", "circ_coherence",
+})
+
+# Every projection op must also be a recordable op, by the same argument as the
+# _SIMILARITY_OPS check above: a name here but not in ALLOWED_OPS would be
+# silently unrequestable. Fail at import.
+if not (_PROJECTION_OPS <= ALLOWED_OPS):
+    raise RuntimeError(
+        "_PROJECTION_OPS contains names absent from ALLOWED_OPS: "
+        f"{sorted(_PROJECTION_OPS - ALLOWED_OPS)}"
     )
 
 _N_ORBITS = 12
@@ -210,6 +227,15 @@ class ChainOrderObserver(BaseObserver):
       magnitude depends on which tied orbit wins, and its sign additionally
       flips when the tied orbits are opposite-handed. Use ``chi_11`` (fixed
       to one orbit) for Binder-cumulant analysis.
+    - ``chirality``: signed <111> circulation pseudoscalar
+      (``|E_+|^2 - |E_-|^2``), the Reynolds projection over the 48 cubic
+      operations computed by
+      ``chainorder.order_params.circulation_invariants``. It is ``+/- 1/4`` at
+      the P3_121 ground state; ``chi_11`` remains the independent template
+      cross-check.
+    - ``circ_coherence``: the companion ordering strength
+      (``|E_+|^2 + |E_-|^2``) from the same projection, ``1/4`` at the ground
+      state.
 
     ``get_observable`` returns only the order parameters named in ``ops``.
     The structure must be in stable Nb-first ordering (as produced by
@@ -263,6 +289,7 @@ class ChainOrderObserver(BaseObserver):
         self._n_anion = 3 * n_sc**3
         self._ops = ops
         self._needs_similarity = bool(set(ops) & _SIMILARITY_OPS)
+        self._needs_projection = bool(set(ops) & _PROJECTION_OPS)
 
     def _per_cell_counts(self, occ_array: np.ndarray) -> np.ndarray:
         """Sum of '1' entries per sub-cell position across all tile blocks."""
@@ -344,6 +371,10 @@ class ChainOrderObserver(BaseObserver):
                     best_sim = max(p_max, i_max)
             computed["closest_sim"] = best_sim
             computed["closest_chi"] = best_p - best_i
+        if self._needs_projection:
+            ci = order_params.circulation_invariants(occ, period=3)
+            computed["chirality"] = float(ci.chirality)
+            computed["circ_coherence"] = float(ci.coherence)
         return {k: computed[k] for k in self._ops}
 
 
