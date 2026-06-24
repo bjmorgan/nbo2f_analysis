@@ -57,6 +57,7 @@ def test_ground_state_anchors_exact(n_sc):
     assert gs["cis_frac"] == pytest.approx(1.0, abs=1e-9)
     assert gs["nbo4f2_frac"] == pytest.approx(1.0, abs=1e-9)
     assert gs["collinear_ff"] == pytest.approx(0.0, abs=1e-9)
+    assert gs["chirality"] == pytest.approx(1 / 4, abs=1e-9)
 
 
 def test_monte_carlo_requires_two_samples():
@@ -208,6 +209,20 @@ def test_reference_table_orders_by_size_and_repeats_ground_state():
     gs6 = {r["op"]: r["ground_state"] for r in rows[n_ops:]}
     for op in sor.REFERENCE_OPS:
         assert gs6[op] == pytest.approx(gs3[op], abs=1e-9)
+
+
+def test_analytic_random_chirality_is_zero():
+    # The projected chirality is a signed pseudoscalar: its independent-site
+    # random limit is exactly 0, with the finite-size floor in the MC column.
+    assert sor._analytic_random("chirality", 6, sor.random_local_limits()) == 0.0
+
+
+def test_reference_table_includes_chirality():
+    rows = sor.reference_table((3,), 8, seed=0)
+    by_op = {r["op"]: r for r in rows}
+    assert "chirality" in by_op
+    assert by_op["chirality"]["analytic_random"] == 0.0
+    assert by_op["chirality"]["ground_state"] == pytest.approx(1 / 4, abs=1e-9)
 
 
 def test_emit_csv_wires_table_and_provenance():

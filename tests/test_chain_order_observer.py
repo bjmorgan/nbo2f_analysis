@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from chainorder import SublatticeOccupation, order_params
 
 from nbo2f_analysis.ce_tools import (
     atoms_from_f_mask_stable,
     build_tiled_groundstate_atoms,
+    load_orbit_rep,
     nb_anion_neighbours,
+    _f_mask_from_atoms,
 )
 from nbo2f_analysis.chain_order_observer import (
     ALLOWED_OPS,
@@ -242,3 +245,89 @@ def test_build_chain_order_observer_constructs_working_observer():
     assert obs.interval == 5
     out = obs.get_observable(build_tiled_groundstate_atoms(n_sc=3))
     assert out == pytest.approx({"oof_amp": 0.3333333333333333}, abs=1e-9)
+
+
+def test_chirality_matches_circulation_invariants(refs):
+    # The observer forwards chainorder's projected invariants unchanged. A
+    # random (non-GS) config makes this a genuine pass-through check, not a
+    # match to the 1/4 anchor.
+    obs = ChainOrderObserver(3, 1, refs, ops=("chirality", "circ_coherence"))
+    atoms = _random_stable_atoms_n3()
+    out = obs.get_observable(atoms)
+    occ = SublatticeOccupation.from_atoms(atoms, N=3, species="F")
+    ci = order_params.circulation_invariants(occ, period=3)
+    assert out["chirality"] == pytest.approx(ci.chirality, abs=1e-12)
+    assert out["circ_coherence"] == pytest.approx(ci.coherence, abs=1e-12)
+
+
+@pytest.mark.parametrize("n_sc", [3, 6])
+def test_circulation_ground_state_is_one_quarter(refs, n_sc):
+    # The tiled P3_121 ground state pins both projected invariants to 1/4,
+    # L-independently. chirality is positive at the orbit-11 handedness.
+    obs = ChainOrderObserver(n_sc, 1, refs, ops=("chirality", "circ_coherence"))
+    out = obs.get_observable(build_tiled_groundstate_atoms(n_sc=n_sc))
+    assert out["chirality"] == pytest.approx(1 / 4, abs=1e-9)
+    assert out["circ_coherence"] == pytest.approx(1 / 4, abs=1e-9)
+
+
+def _orbit_stable_atoms(index):
+    """Orbit representative ``index`` as a stable-ordered N=3 structure."""
+    return atoms_from_f_mask_stable(3, _f_mask_from_atoms(load_orbit_rep(index), n_sc=3))
+
+
+def _mirror_yz(atoms):
+    """Enantiomer via a mirror through the y = z plane (swap the y, z columns).
+
+    A diagonal axis swap is an improper operation, so it maps a structure to
+    its enantiomer directly on the atoms.
+    """
+    mirror = atoms.copy()
+    pos = mirror.get_positions()
+    pos[:, [1, 2]] = pos[:, [2, 1]]
+    mirror.set_positions(pos)
+    mirror.wrap()
+    return mirror
+
+
+def test_chirality_sign_tracks_chi_11_across_orbits(refs):
+    # Across the 12 orbit reps and their enantiomers, the projected chirality
+    # and the template chi_11 carry the same broken-symmetry sign -- up to one
+    # global convention fixed by the first chiral orbit -- and both flip on the
+    # enantiomer. Orbits with zero chi_11 template overlap (chi_11 == 0:
+    # orbits 04, 08) are still chiral -- their chirality is nonzero and flips --
+    # so they are skipped only in the sign-agreement comparison.
+    obs = ChainOrderObserver(3, 1, refs, ops=("chi_11", "chirality"))
+    tol = 1e-9
+    relation = None
+    n_compared = 0
+    for i in range(12):
+        atoms = _orbit_stable_atoms(i)
+        mirror = _mirror_yz(atoms)
+        out = obs.get_observable(atoms)
+        out_m = obs.get_observable(mirror)
+        # Both measures flip sign on the enantiomer (chi_11 = 0 flips trivially).
+        assert out_m["chirality"] == pytest.approx(-out["chirality"], abs=1e-9), i
+        assert out_m["chi_11"] == pytest.approx(-out["chi_11"], abs=1e-9), i
+        if abs(out["chi_11"]) > tol and abs(out["chirality"]) > tol:
+            product = int(np.sign(out["chi_11"]) * np.sign(out["chirality"]))
+            if relation is None:
+                relation = product
+            assert product == relation, i
+            n_compared += 1
+    assert n_compared >= 8  # the chiral orbits were actually compared
+
+
+def test_apply_spacegroup_op_inversion_offset_convention():
+    # Pin nbo2f's offset convention to a known-correct physical destination --
+    # the same worked example chainorder uses: a single F on sublattice 0 at
+    # (1, 1, 0) in an N=4 grid, under physical inversion (perm identity, all
+    # signs negative), must land on sublattice 0 at (2, 3, 0). This fixes the
+    # half-integer-axis offset (c -> N-1-c on the sublattice's own axis,
+    # c -> -c mod N on the others). No chainorder import: this guards nbo2f's
+    # copy against drifting from that ground truth; chainorder pinning the same
+    # example independently is what keeps the two aligned.
+    n = 4
+    grid = np.zeros((3, n, n, n), dtype=int)
+    grid[0, 1, 1, 0] = 1
+    out = _apply_spacegroup_op(grid, perm=(0, 1, 2), signs=(-1, -1, -1))
+    assert np.argwhere(out).tolist() == [[0, 2, 3, 0]]

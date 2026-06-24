@@ -37,10 +37,13 @@ from nbo2f_analysis.chain_order_observer import (
 )
 
 # The OPs this module references, in CSV row order: the four manuscript
-# structural OPs, plus collinear_ff and the chiral chi_11.
+# structural OPs, plus collinear_ff and the two chiral measures chi_11
+# (template overlap) and chirality (projected <111> pseudoscalar). The
+# observer's circ_coherence is intentionally omitted -- it is a diagnostic
+# companion, not a manuscript-reported OP.
 REFERENCE_OPS: tuple[str, ...] = (
     "oof_amp", "icoh_global", "cis_frac", "nbo4f2_frac", "collinear_ff",
-    "chi_11",
+    "chi_11", "chirality",
 )
 
 # Every referenced OP must be recordable by the observer, otherwise
@@ -124,11 +127,12 @@ def ground_state_reference(n_sc: int) -> dict[str, float]:
     observer, so the anchors are pinned against the same code the manuscript
     runs. The values are L-independent:
 
-        chi_11 = 4/9, icoh_global = 1, oof_amp = 1/3,
+        chi_11 = 4/9, chirality = 1/4, icoh_global = 1, oof_amp = 1/3,
         cis_frac = nbo4f2_frac = 1, collinear_ff = 0.
 
     ``chi_11 = 4/9`` (not 1) because an orbit and its enantiomer share 5/9 of
-    sites.
+    sites; ``chirality = 1/4`` is the A2-projected pseudoscalar value, likewise
+    not rescaled to 1.
 
     Args:
         n_sc: Supercell side (a multiple of 3).
@@ -219,7 +223,7 @@ def _analytic_random(op: str, n_sc: int, local: dict[str, Fraction]) -> float:
         return float(local[op])
     if op == "oof_amp":
         return oof_amp_random(n_sc)
-    if op in ("icoh_global", "chi_11"):
+    if op in ("icoh_global", "chi_11", "chirality"):
         # Only ops whose true random limit is exactly 0 belong here; an op
         # with a non-zero limit needs its own branch above rather than
         # silently taking this 0.0.
