@@ -268,3 +268,49 @@ def test_circulation_ground_state_is_one_quarter(refs, n_sc):
     out = obs.get_observable(build_tiled_groundstate_atoms(n_sc=n_sc))
     assert out["chirality"] == pytest.approx(1 / 4, abs=1e-9)
     assert out["circ_coherence"] == pytest.approx(1 / 4, abs=1e-9)
+
+
+def _orbit_stable_atoms(index):
+    """Orbit representative ``index`` as a stable-ordered N=3 structure."""
+    return atoms_from_f_mask_stable(3, _f_mask_from_atoms(load_orbit_rep(index), n_sc=3))
+
+
+def _mirror_yz(atoms):
+    """Enantiomer via a mirror through the y = z plane (swap the y, z columns).
+
+    A diagonal axis swap is an improper operation with no half-integer-axis
+    subtlety, so it is the clean enantiomer construction at the atoms level.
+    """
+    mirror = atoms.copy()
+    pos = mirror.get_positions()
+    pos[:, [1, 2]] = pos[:, [2, 1]]
+    mirror.set_positions(pos)
+    mirror.wrap()
+    return mirror
+
+
+def test_chirality_sign_tracks_chi_11_across_orbits(refs):
+    # Across the 12 orbit reps and their enantiomers, the projected chirality
+    # and the template chi_11 carry the same broken-symmetry sign -- up to one
+    # global convention fixed by the first chiral orbit -- and both flip on the
+    # enantiomer. Achiral templates (chi_11 exactly 0: orbits 04, 08) are
+    # skipped in the sign comparison; their chirality still flips.
+    obs = ChainOrderObserver(3, 1, refs, ops=("chi_11", "chirality"))
+    tol = 1e-9
+    relation = None
+    n_compared = 0
+    for i in range(12):
+        atoms = _orbit_stable_atoms(i)
+        mirror = _mirror_yz(atoms)
+        out = obs.get_observable(atoms)
+        out_m = obs.get_observable(mirror)
+        # Both measures flip sign on the enantiomer (chi_11 = 0 flips trivially).
+        assert out_m["chirality"] == pytest.approx(-out["chirality"], abs=1e-9), i
+        assert out_m["chi_11"] == pytest.approx(-out["chi_11"], abs=1e-9), i
+        if abs(out["chi_11"]) > tol and abs(out["chirality"]) > tol:
+            product = int(np.sign(out["chi_11"]) * np.sign(out["chirality"]))
+            if relation is None:
+                relation = product
+            assert product == relation, i
+            n_compared += 1
+    assert n_compared >= 8  # the chiral orbits were actually compared
