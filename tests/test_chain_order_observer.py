@@ -278,8 +278,8 @@ def _orbit_stable_atoms(index):
 def _mirror_yz(atoms):
     """Enantiomer via a mirror through the y = z plane (swap the y, z columns).
 
-    A diagonal axis swap is an improper operation with no half-integer-axis
-    subtlety, so it is the clean enantiomer construction at the atoms level.
+    A diagonal axis swap is an improper operation, so it maps a structure to
+    its enantiomer directly on the atoms.
     """
     mirror = atoms.copy()
     pos = mirror.get_positions()
@@ -293,8 +293,9 @@ def test_chirality_sign_tracks_chi_11_across_orbits(refs):
     # Across the 12 orbit reps and their enantiomers, the projected chirality
     # and the template chi_11 carry the same broken-symmetry sign -- up to one
     # global convention fixed by the first chiral orbit -- and both flip on the
-    # enantiomer. Achiral templates (chi_11 exactly 0: orbits 04, 08) are
-    # skipped in the sign comparison; their chirality still flips.
+    # enantiomer. Orbits with zero chi_11 template overlap (chi_11 == 0:
+    # orbits 04, 08) are still chiral -- their chirality is nonzero and flips --
+    # so they are skipped only in the sign-agreement comparison.
     obs = ChainOrderObserver(3, 1, refs, ops=("chi_11", "chirality"))
     tol = 1e-9
     relation = None
@@ -317,13 +318,14 @@ def test_chirality_sign_tracks_chi_11_across_orbits(refs):
 
 
 def test_apply_spacegroup_op_inversion_offset_convention():
-    # Reuse chainorder's worked example, pinned independently here: a single F
-    # on sublattice 0 at (1, 1, 0) in an N=4 grid, under physical inversion
-    # (perm identity, all signs negative), must land on sublattice 0 at
-    # (2, 3, 0). This fixes the half-integer-axis offset (c -> N-1-c on the
-    # sublattice's own axis, c -> -c mod N on the others). No chainorder
-    # import: both packages match the same physical destination, so neither can
-    # drift.
+    # Pin nbo2f's offset convention to a known-correct physical destination --
+    # the same worked example chainorder uses: a single F on sublattice 0 at
+    # (1, 1, 0) in an N=4 grid, under physical inversion (perm identity, all
+    # signs negative), must land on sublattice 0 at (2, 3, 0). This fixes the
+    # half-integer-axis offset (c -> N-1-c on the sublattice's own axis,
+    # c -> -c mod N on the others). No chainorder import: this guards nbo2f's
+    # copy against drifting from that ground truth; chainorder pinning the same
+    # example independently is what keeps the two aligned.
     n = 4
     grid = np.zeros((3, n, n, n), dtype=int)
     grid[0, 1, 1, 0] = 1

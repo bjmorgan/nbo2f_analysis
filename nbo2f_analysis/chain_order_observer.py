@@ -230,9 +230,9 @@ class ChainOrderObserver(BaseObserver):
     - ``chirality``: signed <111> circulation pseudoscalar
       (``|E_+|^2 - |E_-|^2``), the Reynolds projection over the 48 cubic
       operations computed by
-      ``chainorder.order_params.circulation_invariants``. It is ``+/- 1/4`` at
-      the P3_121 ground state; ``chi_11`` remains the independent template
-      cross-check.
+      ``chainorder.order_params.circulation_invariants``. The tiled P3_121
+      ground state gives ``1/4`` (orbit-11 handedness; its enantiomer gives
+      ``-1/4``); ``chi_11`` remains the independent template cross-check.
     - ``circ_coherence``: the companion ordering strength
       (``|E_+|^2 + |E_-|^2``) from the same projection, ``1/4`` at the ground
       state.

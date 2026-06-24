@@ -37,7 +37,10 @@ from nbo2f_analysis.chain_order_observer import (
 )
 
 # The OPs this module references, in CSV row order: the four manuscript
-# structural OPs, plus collinear_ff and the chiral chi_11.
+# structural OPs, plus collinear_ff and the two chiral measures chi_11
+# (template overlap) and chirality (projected <111> pseudoscalar). The
+# observer's circ_coherence is intentionally omitted -- it is a diagnostic
+# companion, not a manuscript-reported OP.
 REFERENCE_OPS: tuple[str, ...] = (
     "oof_amp", "icoh_global", "cis_frac", "nbo4f2_frac", "collinear_ff",
     "chi_11", "chirality",
@@ -128,7 +131,8 @@ def ground_state_reference(n_sc: int) -> dict[str, float]:
         cis_frac = nbo4f2_frac = 1, collinear_ff = 0.
 
     ``chi_11 = 4/9`` (not 1) because an orbit and its enantiomer share 5/9 of
-    sites; ``chirality = 1/4`` is the raw A2-projected pseudoscalar value.
+    sites; ``chirality = 1/4`` is the A2-projected pseudoscalar value, likewise
+    not rescaled to 1.
 
     Args:
         n_sc: Supercell side (a multiple of 3).
